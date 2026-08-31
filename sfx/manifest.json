@@ -1,0 +1,74 @@
+[
+  {
+    "name": "leaf-bounce",
+    "seconds": 1,
+    "prompt": "Soft rubbery boing of a small ball bouncing off a broad springy leaf, short rounded impact with a gentle pitch rise.",
+    "event": "bounce"
+  },
+  {
+    "name": "vine-bounce",
+    "seconds": 1,
+    "prompt": "Springy wooden twang like a plucked taut vine, quick upward pitch bend, light and bouncy.",
+    "event": "bounce"
+  },
+  {
+    "name": "spring-launch",
+    "seconds": 2,
+    "prompt": "Coiled metal spring recoiling with a bright rising sproing followed by a short energetic launch whoosh.",
+    "event": "spring"
+  },
+  {
+    "name": "petal-crumble",
+    "seconds": 1,
+    "prompt": "Dry leaf crumbling and crackling apart underfoot, brittle papery crunch that fades quickly.",
+    "event": "crumble"
+  },
+  {
+    "name": "mote-chime",
+    "seconds": 1,
+    "prompt": "Tiny crystal bell chime, bright high ping with a shimmering tail, like collecting a glowing mote.",
+    "event": "token"
+  },
+  {
+    "name": "mote-sparkle",
+    "seconds": 1,
+    "prompt": "Delicate glass sparkle glissando, quick ascending twinkle of small chimes.",
+    "event": "token"
+  },
+  {
+    "name": "chain-bonus",
+    "seconds": 2,
+    "prompt": "Two quick ascending xylophone taps followed by a bright confirming ding, playful reward sting.",
+    "event": "combo"
+  },
+  {
+    "name": "milestone-arp",
+    "seconds": 2,
+    "prompt": "Three-note ascending marimba arpeggio, warm and celebratory checkpoint jingle.",
+    "event": "milestone"
+  },
+  {
+    "name": "fall-whistle",
+    "seconds": 2,
+    "prompt": "Long descending slide whistle, cartoon falling sound dropping steadily in pitch.",
+    "event": "fall"
+  },
+  {
+    "name": "thorn-hit",
+    "seconds": 1,
+    "prompt": "Sharp prickly snap of dry thorns breaking with a low thud, harsh scratchy impact.",
+    "event": "thorn"
+  },
+  {
+    "name": "ui-click",
+    "seconds": 1,
+    "prompt": "Short clean wooden UI button click, soft dry tick.",
+    "event": "click"
+  },
+  {
+    "name": "goal-fanfare",
+    "seconds": 3,
+    "prompt": "Short triumphant brass and bell fanfare, four rising notes resolving brightly, victory flourish.",
+    "event": "goal"
+  }
+]

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7fb7e8">
+<title>Skybound Spring</title>
+<meta name="description" content="A vertical garden platformer: auto-bounce upward, steer through the clouds, chain landings, dodge thorns.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='20' r='10' fill='%238ed06a'/%3E%3Cpath d='M16 12 Q20 2 26 4 Q22 12 16 12' fill='%234f9e4f'/%3E%3C/svg%3E">
+</head>
+<body>
+<noscript>
+  <div class="panel" style="margin:2rem auto;max-width:36rem;padding:1rem;font-family:sans-serif">
+    <h1>Skybound Spring</h1>
+    <p>This game needs JavaScript and WebGL. Please enable JavaScript to play.</p>
+  </div>
+</noscript>
+<main id="app" aria-label="Skybound Spring game">
+  <div class="screen open" style="display:grid;place-items:center;min-height:100vh;font-family:sans-serif">
+    <div class="panel" style="padding:2rem;text-align:center">
+      <h1>Skybound Spring</h1>
+      <p>Loading the garden…</p>
+      <progress aria-label="Loading"></progress>
+    </div>
+  </div>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
