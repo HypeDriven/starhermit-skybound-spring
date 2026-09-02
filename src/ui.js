@@ -66,7 +66,10 @@ export class UI {
     this.screens = el('div', { class: 'screens' });
 
     this.root.append(this.livePolite, this.liveAssertive, this.boardMirror, this.captions,
-      this.topBar, this.railLeft, this.sceneHost, this.railRight, this.hud, this.thumbTray, this.screens);
+      this.topBar, this.railLeft, this.sceneHost, this.railRight, this.hud, this.thumbTray);
+    // Overlay screens cover the playfield only, so the side rails stay clickable
+    // while a menu is open (a full-viewport overlay made the rail buttons dead).
+    this.sceneHost.append(this.screens);
 
     this.buildRails();
     this.buildHud();
@@ -180,27 +183,33 @@ export class UI {
 
   showJourney(progress) {
     const stages = allStages();
-    const list = el('ol', { class: 'stage-list' });
     const firstLocked = stages.findIndex((s, i) => i > 0 && !progress.stagesCompleted[stages[i - 1].id]);
+    // Compact tile grid: all 40 stages fit inside the panel on any viewport,
+    // so no stage is ever laid out below the fold of a non-scrolling document.
+    // Full stage details live on the tile's aria-label / tooltip.
+    const grid = el('div', { class: 'stage-grid', role: 'list' });
     stages.forEach((s, i) => {
       const unlocked = i === 0 || !!progress.stagesCompleted[stages[i - 1].id];
       const best = progress.stagesCompleted[s.id];
       const theme = THEMES.find(t => t.key === s.theme);
-      const item = el('li', {},
-        button(
-          `${s.mastery ? '★ ' : ''}${s.name} — ${s.goal.type === 'tokens' ? `collect ${s.goal.target} motes` : `reach ${s.goal.target}m`} · par ${s.parSeconds}s ${best !== undefined ? '· best ' + best : ''}`,
-          unlocked ? () => this.actions.playStage(s) : null,
-          'btn btn-stage' + (unlocked ? '' : ' btn-locked')),
-        el('span', { class: 'muted small', text: ` ${theme.name} · ${s.difficulty}` }));
-      if (!unlocked) item.firstChild.disabled = true;
-      if (i === firstLocked) item.classList.add('next-up');
-      list.append(item);
+      const desc = `${s.name} — ${s.goal.type === 'tokens' ? `collect ${s.goal.target} motes` : `reach ${s.goal.target}m`} · par ${s.parSeconds}s · ${theme.name} · ${s.difficulty}`
+        + (best !== undefined ? ` · best ${best}` : '') + (unlocked ? '' : ' (locked)');
+      const cell = button(
+        `${s.mastery ? '★' : ''}${i + 1}${best !== undefined ? '✓' : ''}`,
+        unlocked ? () => this.actions.playStage(s) : null,
+        'btn btn-stage-cell' + (s.mastery ? ' stage-mastery' : '') + (unlocked ? '' : ' btn-locked'));
+      cell.setAttribute('aria-label', desc);
+      cell.title = desc;
+      cell.setAttribute('role', 'listitem');
+      if (!unlocked) cell.disabled = true;
+      if (i === firstLocked) cell.classList.add('next-up');
+      grid.append(cell);
     });
     const track = masteryTrack(progress);
     const node = el('div', { class: 'panel' },
       el('h1', { text: 'Journey' }),
       el('p', { class: 'muted', text: `Mastery gates: ${track.filter(t => t.completed).length}/${track.length} cleared` }),
-      el('div', { class: 'scroll-list' }, list),
+      grid,
       button('Back', () => this.actions.toTitle()));
     this.showScreen('Journey', node);
   }

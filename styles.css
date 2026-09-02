@@ -112,7 +112,7 @@ html.reduced-motion * { transition: none !important; animation: none !important;
 .btn-stage { inline-size: 100%; text-align: start; }
 .tier-btn.active { background: var(--accent); color: #fff; }
 
-.screens { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+.screens { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
 .screens.open { pointer-events: auto; }
 .screen {
   position: absolute; inset: 0;
@@ -145,6 +145,17 @@ html.reduced-motion * { transition: none !important; animation: none !important;
 .stage-list { list-style: none; margin: 0; padding: 0; }
 .stage-list li { margin-block: 2px; }
 .stage-list .next-up .btn-stage { border-color: var(--focus); border-width: 3px; }
+
+/* Journey stage picker: compact tiles so every stage fits inside the panel. */
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+  margin-block: 8px;
+}
+.btn-stage-cell { inline-size: auto; margin: 0; padding: 6px 4px; text-align: center; font-weight: 700; }
+.btn-stage-cell.stage-mastery { border-color: #8a6d00; }
+.stage-grid .next-up { border-color: var(--focus); border-width: 3px; }
 
 .board-list li { margin-block: 2px; }
 .score-breakdown { display: grid; gap: 4px; margin-block: 8px; }

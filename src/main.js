@@ -499,7 +499,7 @@ class Game {
         });
         if (stage.tutorial && !this.progress.tutorialsDone.includes(stage.tutorial)) {
           const tut = C.TUTORIALS.find(t => t.id === stage.tutorial);
-          if (tut) this.announce('Tip: a lesson for this mechanic is available in Learn.');
+          if (tut) this.ui.announce('Tip: a lesson for this mechanic is available in Learn.');
         }
       },
       playDaily: () => {
