@@ -349,9 +349,16 @@ class Game {
     window.addEventListener('blur', () => this.keys.clear());
 
     // Touch/pointer drag steering on the playfield (tap-and-drag; no multi-touch).
+    // The overlay screens (title, journey, pause, results, settings Help/Back,
+    // etc.) render INSIDE #scene-host, so we only begin steering AND capture the
+    // pointer when the press lands on the game canvas itself. Capturing on a
+    // press that originated on a button/overlay would swallow the button's
+    // click; letting those presses propagate keeps every menu button tappable.
     const canvasHost = document.getElementById('scene-host');
+    const gameCanvas = this.renderer && this.renderer.domElement;
     let drag = null;
     canvasHost.addEventListener('pointerdown', (e) => {
+      if (e.target !== gameCanvas) return;
       drag = { id: e.pointerId, x0: e.clientX, x: e.clientX, moved: false };
       canvasHost.setPointerCapture(e.pointerId);
     });

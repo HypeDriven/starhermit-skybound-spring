@@ -5,7 +5,8 @@
   "scripts": {
     "build": "esbuild src/main.js --bundle --minify --format=esm --target=es2022 --outfile=app.js && node -e \"const fs=require('fs');const s=fs.statSync('app.js').size;console.log('app.js',(s/1024).toFixed(1)+' KiB')\"",
     "start": "node server.js",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node tests/e2e.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
