@@ -80,6 +80,9 @@ export class Platform {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         ...envelope,
+        // Server validator expects the ordered command log as `inputLog`;
+        // the replay envelope calls the same list `commands`.
+        inputLog: envelope.commands,
         version: envelope.contentVersion,
         playerId: this.playerId,
         playerName: this.playerName,

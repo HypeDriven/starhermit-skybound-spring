@@ -5,7 +5,12 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../server.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const testData = await mkdtemp(join(tmpdir(), 'skybound-spring-'));
+process.env.SKYBOUND_SPRING_DATA_DIR = testData;
+const { startServer } = await import('../server.js');
 import * as R from '../src/rules.js';
 import { dailyConfig } from '../src/content.js';
 
@@ -16,7 +21,10 @@ test.before(async () => {
   server = await startServer(0); // ephemeral port
   base = `http://127.0.0.1:${server.address().port}`;
 });
-test.after(() => server && server.close());
+test.after(async () => {
+  if (server) { server.closeAllConnections(); await new Promise(r => server.close(r)); }
+  await rm(testData, {recursive:true,force:true});
+});
 
 async function api(path, opts) {
   const res = await fetch(base + path, opts);
@@ -78,6 +86,24 @@ test('POST /api/v1/daily/submit accepts a genuine replayed run', async () => {
   assert.equal(status, 200, JSON.stringify(body));
   assert.equal(body.accepted, true);
   assert.equal(body.score, run.scoreComponents.total);
+});
+
+test('browser envelope shape (commands, no inputLog) is accepted', async () => {
+  // Regression: the client posts the replay envelope, whose ordered command
+  // list is named `commands`. The validator must accept that shape, otherwise
+  // every real ranked submission is rejected as "missing input log".
+  const run = recordRun(dailyConfig().seed, dailyConfig().difficulty);
+  const envelope = {
+    seed: run.seed, version: run.version, settings: run.settings,
+    commands: run.inputLog, scoreComponents: run.scoreComponents,
+    checksum: run.checksum, playerId: 'browser-tester', playerName: 'Browser Tester',
+    mode: 'daily',
+  };
+  const { status, body } = await api('/api/v1/daily/submit', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(envelope),
+  });
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.equal(body.accepted, true);
 });
 
 test('tampered input log is rejected', async () => {

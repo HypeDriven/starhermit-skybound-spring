@@ -107,6 +107,7 @@ class Game {
   /* ---------------- state transitions ---------------- */
 
   toTitle(reason) {
+    clearInterval(this._cd); // an in-flight countdown must not force-start a run from the title screen
     this.setState('title', reason);
     this.session = null;
     this.tutorial = null;
@@ -128,8 +129,14 @@ class Game {
   }
 
   startRun(cfg, meta) {
+    const baseConfig = { ...cfg };
+    cfg = { ...cfg };
     const assists = [];
-    if (this.settings.timingAssist && meta.mode === 'practice') {
+    // difficulty is a tier KEY on the first entry, but restartRun re-enters
+    // with the already-assisted tier OBJECT from runMeta.cfg — indexing
+    // DIFFICULTY with it would crash and double-applying would stack the
+    // gravity reduction. Only apply the assist to a fresh string key.
+    if (this.settings.timingAssist && meta.mode === 'practice' && typeof cfg.difficulty === 'string') {
       cfg = { ...cfg, difficulty: { ...R.DIFFICULTY[cfg.difficulty], gravity: R.DIFFICULTY[cfg.difficulty].gravity * 0.92 } };
       assists.push('timing');
     }
@@ -141,7 +148,7 @@ class Game {
       allowUndo: meta.allowUndo,
       onEvents: (evs, state) => this.onSimEvents(evs, state),
     });
-    this.runMeta = { ...meta, cfg };
+    this.runMeta = { ...meta, cfg: baseConfig };
     this.applyTheme(meta.theme || C.THEMES[0]);
     this.ui.closeScreen();
     this.analytics.track('start', { mode: meta.mode });
@@ -172,7 +179,7 @@ class Game {
       mode: this.runMeta.label, ranked: this.session.ranked,
       allowUndo: this.session.allowUndo, tick: this.session.state.tick,
     });
-    this.analytics.track('round-end', { mode: this.runMeta.mode, quit: true });
+    this.analytics.track('pause', { mode: this.runMeta.mode });
   }
 
   resume(reason) {

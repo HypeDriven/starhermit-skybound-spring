@@ -16,7 +16,7 @@ const rules = await import(path.join(__dirname, 'src', 'rules.js'));
 const content = await import(path.join(__dirname, 'src', 'content.js'));
 
 const PORT = Number(process.env.PORT) || 8080;
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.SKYBOUND_SPRING_DATA_DIR || path.join(__dirname, 'data');
 const MAX_BODY = 256 * 1024;          // 256 KB request cap
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 120;                  // requests per IP per minute
@@ -114,7 +114,10 @@ function isoWeekKey(d = new Date()) {
  */
 export function validateSubmission(body) {
   if (!body || typeof body !== 'object') return { ok: false, reason: 'bad request body' };
-  const { seed, version, settings, inputLog, scoreComponents, checksum } = body;
+  const { seed, version, settings, scoreComponents, checksum } = body;
+  // Clients submit the replay envelope, whose ordered command list is named
+  // `commands`; older/test clients send it as `inputLog`. Accept both.
+  const inputLog = Array.isArray(body.inputLog) ? body.inputLog : body.commands;
   if (!Number.isInteger(seed) || seed < 0) return { ok: false, reason: 'invalid seed' };
   if (version !== rules.CONTENT_VERSION) return { ok: false, reason: 'stale content version' };
   if (!settings || typeof settings !== 'object') return { ok: false, reason: 'missing settings' };
@@ -184,8 +187,9 @@ function recordScore(entry) {
     (store.boards.daily[entry.date] ||= []);
     push(store.boards.daily[entry.date], entry.date);
     boards.push('daily');
-    (store.boards.weekly[isoWeekKey(new Date(entry.date + 'T00:00:00Z'))] ||= []);
-    push(store.boards.weekly[isoWeekKey(new Date(entry.date + 'T00:00:00Z'))], isoWeekKey());
+    const weekKey = isoWeekKey(new Date(entry.date + 'T00:00:00Z'));
+    (store.boards.weekly[weekKey] ||= []);
+    push(store.boards.weekly[weekKey], weekKey);
     boards.push('weekly');
   }
   saveStore();
@@ -203,7 +207,9 @@ const MIME = {
 };
 
 function serveStatic(req, res, urlPath) {
-  let rel = decodeURIComponent(urlPath === '/' ? '/index.html' : urlPath);
+  let rel;
+  try { rel = decodeURIComponent(urlPath === '/' ? '/index.html' : urlPath); } catch { return err(res, 400, 'bad path'); }
+  if (rel.split(/[\\/]/).some(p => p.startsWith('.'))) return err(res, 403, 'forbidden');
   const filePath = path.normalize(path.join(__dirname, rel));
   if (!filePath.startsWith(__dirname) || filePath.includes(`${path.sep}data${path.sep}`)) {
     return err(res, 403, 'forbidden');
