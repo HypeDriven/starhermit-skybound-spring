@@ -200,29 +200,43 @@ html.reduced-motion * { transition: none !important; animation: none !important;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* Compact desktop / tablet: rails become overlay drawers */
+/* Rail drawer chrome (only shown on compact layouts) */
+.rail-toggles, .rail-scrim, .rail-close { display: none; }
+
+/* Compact desktop / tablet: rails become closed-by-default drawers so the
+   playfield and steering tray are never covered until the player asks. */
 @media (max-width: 1023px) {
   .app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; grid-template-areas: "scene" "tray"; }
   .rail {
     position: fixed; inset-block: 0; inline-size: min(300px, 85vw);
-    background: var(--panel); z-index: 7;
-    transition: transform 0.2s;
+    background: var(--panel); z-index: 12;
+    transition: transform 0.2s; box-shadow: 0 0 24px rgba(0,0,0,0.4);
   }
-  .rail-left { inset-inline-start: 0; }
-  .rail-right { inset-inline-end: 0; }
-  .rail:not(:focus-within):not(:hover) { opacity: 0.92; }
+  .rail-left { inset-inline-start: 0; transform: translateX(-104%); }
+  .rail-right { inset-inline-end: 0; transform: translateX(104%); }
+  .rail.open { transform: none; }
+  .rail-close { display: inline-flex; align-self: flex-end; }
+  .rail-scrim { display: block; position: fixed; inset: 0; z-index: 11; background: rgba(0,0,0,0.35); }
+  .rail-scrim[hidden] { display: none; }
+  .rail-toggles {
+    display: flex; justify-content: space-between; pointer-events: none;
+    position: fixed; inset-inline: 0; inset-block-start: calc(8px + env(safe-area-inset-top));
+    padding: 0 8px; z-index: 6;
+  }
+  .rail-toggles .btn { pointer-events: auto; }
+  @media (prefers-reduced-motion: reduce) { .rail { transition: none; } }
 }
 
 /* Portrait mobile: top status bar + bottom thumb tray */
 @media (max-width: 700px) and (orientation: portrait) {
   .top-bar { display: none; }
-  .rail { display: none; }
+  .rail, .rail-toggles, .rail-scrim { display: none; }
   .thumb-tray { display: flex; }
 }
 
 /* Landscape mobile: narrow rail, big targets */
 @media (max-height: 500px) and (orientation: landscape) {
-  .rail { padding: 6px; inline-size: 150px; font-size: 0.85rem; }
+  .rail { padding: 6px; inline-size: min(260px, 60vw); font-size: 0.85rem; }
   .panel { max-block-size: 94dvh; }
   .thumb-btn { min-height: 48px; }
 }

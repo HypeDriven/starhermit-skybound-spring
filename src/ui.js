@@ -65,8 +65,25 @@ export class UI {
     // Overlay screens host
     this.screens = el('div', { class: 'screens' });
 
+    // Compact layouts: rails are closed-by-default drawers opened from these
+    // chips (one at a time), closed by their ✕ button or a tap on the scrim.
+    this.railToggles = el('div', { class: 'rail-toggles' },
+      this.toggleLeft = button('Objective', () => this.toggleRail('left'), 'btn btn-small rail-toggle'),
+      this.toggleRight = button('Actions', () => this.toggleRail('right'), 'btn btn-small rail-toggle'));
+    this.toggleLeft.setAttribute('aria-expanded', 'false');
+    this.toggleRight.setAttribute('aria-expanded', 'false');
+    this.railScrim = el('div', { class: 'rail-scrim', hidden: '' });
+    this.railScrim.addEventListener('click', () => this.toggleRail(null));
+    for (const [rail, side] of [[this.railLeft, 'left'], [this.railRight, 'right']]) {
+      const close = button('✕', () => this.toggleRail(null), 'btn btn-small rail-close');
+      close.setAttribute('aria-label', 'Close panel');
+      rail.prepend(close);
+      rail.dataset.side = side;
+    }
+
     this.root.append(this.livePolite, this.liveAssertive, this.boardMirror, this.captions,
-      this.topBar, this.railLeft, this.sceneHost, this.railRight, this.hud, this.thumbTray);
+      this.topBar, this.railLeft, this.sceneHost, this.railRight, this.hud, this.thumbTray,
+      this.railToggles, this.railScrim);
     // Overlay screens cover the playfield only, so the side rails stay clickable
     // while a menu is open (a full-viewport overlay made the rail buttons dead).
     this.sceneHost.append(this.screens);
@@ -76,8 +93,23 @@ export class UI {
     this.buildThumbTray();
   }
 
+  toggleRail(side) {
+    const openLeft = side === 'left' && !this.railLeft.classList.contains('open');
+    const openRight = side === 'right' && !this.railRight.classList.contains('open');
+    this.railLeft.classList.toggle('open', openLeft);
+    this.railRight.classList.toggle('open', openRight);
+    this.toggleLeft.setAttribute('aria-expanded', String(openLeft));
+    this.toggleRight.setAttribute('aria-expanded', String(openRight));
+    this.railScrim.hidden = !(openLeft || openRight);
+    if (openLeft) this.railLeft.focus?.();
+    if (openRight) this.railRight.focus?.();
+  }
+
   buildRails() {
+    const keep = (rail) => rail.querySelector('.rail-close');
+    const closeL = keep(this.railLeft), closeR = keep(this.railRight);
     this.railLeft.innerHTML = '';
+    if (closeL) this.railLeft.append(closeL);
     this.objectiveBox = el('div', { class: 'card' },
       el('h2', { text: 'Objective' }), this.objectiveText = el('p', { text: '—' }));
     this.progressBox = el('div', { class: 'card' },
@@ -85,6 +117,7 @@ export class UI {
     this.railLeft.append(this.objectiveBox, this.progressBox);
 
     this.railRight.innerHTML = '';
+    if (closeR) this.railRight.append(closeR);
     this.actionsBox = el('div', { class: 'card actions-card' });
     this.statusBox = el('div', { class: 'card' },
       el('h2', { text: 'Status' }), this.statusText = el('p', { text: 'Offline practice available.' }),
