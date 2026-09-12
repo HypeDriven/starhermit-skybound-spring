@@ -87,7 +87,8 @@ export class UI {
     this.railRight.innerHTML = '';
     this.actionsBox = el('div', { class: 'card actions-card' });
     this.statusBox = el('div', { class: 'card' },
-      el('h2', { text: 'Status' }), this.statusText = el('p', { text: 'Offline practice available.' }));
+      el('h2', { text: 'Status' }), this.statusText = el('p', { text: 'Offline practice available.' }),
+      this.syncText = el('p', { class: 'muted small', text: 'offline (local save)' }));
     this.railRight.append(this.actionsBox, this.statusBox);
   }
 
@@ -160,8 +161,9 @@ export class UI {
   /* ---------------- screens ---------------- */
 
   showTitle(data) {
-    const { progress, daily, online } = data;
+    const { progress, daily, online, name } = data;
     const done = Object.keys(progress.stagesCompleted).length;
+    const onlineText = name ? `Online as ${name}` : (online ? 'Online — ranked daily available' : 'Offline — practice & local daily');
     const node = el('div', { class: 'panel title-panel' },
       el('h1', { class: 'game-title', text: 'Skybound Spring' }),
       el('p', { class: 'tagline', text: 'Bounce up the endless garden. Chain landings, dodge thorns, chase the sky.' }),
@@ -176,7 +178,7 @@ export class UI {
         button('Profile', () => this.actions.openProfile())),
       el('div', { class: 'row gap' },
         button('Settings', () => this.showSettings()), button('Help', () => this.showHelp())),
-      el('p', { class: 'muted', text: `Journey: ${done}/40 stages · ${online ? 'Online — ranked daily available' : 'Offline — practice & local daily'}` }),
+      el('p', { class: 'muted', text: `Journey: ${done}/40 stages · ${onlineText}` }),
     );
     this.showScreen('Title', node);
   }
@@ -261,12 +263,18 @@ export class UI {
 
   async showProfile(data) {
     const { progress, platform } = data;
+    // Hosted identity comes from the account profile (read-only); the editable
+    // guest name is local/offline only.
     const nameInput = el('input', { type: 'text', value: platform.playerName, 'aria-label': 'Display name', maxlength: '32' });
+    const nameRow = platform.hosted
+      ? el('p', { class: 'row gap' }, el('strong', { text: `Account: ${platform.nickname}` }),
+          el('span', { class: 'muted small', text: `Cloud save: ${platform.syncState}` }))
+      : el('label', { class: 'row gap' }, 'Display name: ', nameInput,
+          button('Save', () => { platform.setPlayerName(nameInput.value); this.announce('Name saved.'); }));
     const boardsNode = el('div', { class: 'boards' }, el('p', { class: 'muted', text: 'Loading boards…' }));
     const node = el('div', { class: 'panel' },
       el('h1', { text: 'Profile' }),
-      el('label', { class: 'row gap' }, 'Display name: ', nameInput,
-        button('Save', () => { platform.setPlayerName(nameInput.value); this.announce('Name saved.'); })),
+      nameRow,
       el('h2', { text: 'Achievements' }),
       el('ul', {}, ...ACHIEVEMENTS.map(a => el('li', {},
         el('strong', { text: a.name }), ` — ${a.description} `,
@@ -276,11 +284,27 @@ export class UI {
       button('Back', () => this.actions.toTitle()));
     this.showScreen('Profile', node);
 
-    const scopes = platform.available ? ['global', 'daily', 'weekly'] : [];
+    const localBests = el('p', { class: 'muted' },
+      `Local bests — Practice: ${progress.bests.practice || 0} · Daily: ${progress.bests.daily || 0} · Journey stages: ${Object.keys(progress.stagesCompleted).length}/40`);
     boardsNode.innerHTML = '';
+
+    if (platform.hosted) {
+      // Platform leaderboard is read-only; personal bests stay local/cloud-saved.
+      const wrap = el('div', { class: 'card' }, el('h3', { text: 'Global' }), el('ol', { class: 'board-list' }));
+      boardsNode.append(wrap, localBests);
+      const r = await platform.leaderboard('global');
+      if (!r.ok) { wrap.append(el('p', { class: 'muted', text: r.recoverable ? 'Temporarily unavailable — try again soon.' : 'No platform leaderboard for this game yet — local bests below.' })); return; }
+      if (!r.entries.length) { wrap.append(el('p', { class: 'muted', text: 'No entries yet — be the first!' })); return; }
+      const listEl = wrap.querySelector('.board-list');
+      for (const e of r.entries.slice(0, 10)) {
+        listEl.append(el('li', {}, `${e.name || 'Player'} — ${e.score}${e.rank ? ` (#${e.rank})` : ''}`));
+      }
+      return;
+    }
+
+    const scopes = platform.available ? ['global', 'daily', 'weekly'] : [];
     if (!scopes.length) {
-      boardsNode.append(el('p', { class: 'muted', text: 'Offline — leaderboards need the hosted server. Local bests:' }),
-        el('p', {}, `Practice best: ${progress.bests.practice || 0} · Daily best: ${progress.bests.daily || 0} · Journey stages: ${Object.keys(progress.stagesCompleted).length}/40`));
+      boardsNode.append(el('p', { class: 'muted', text: 'Offline — leaderboards need the hosted server.' }), localBests);
       return;
     }
     for (const scope of scopes) {
@@ -448,6 +472,10 @@ export class UI {
   }
 
   setStatus(text) { this.statusText.textContent = text; }
+  setSyncStatus(state) {
+    const labels = { offline: 'offline (local save)', local: 'cloud: not uploaded yet', saving: 'cloud: saving…', synced: 'cloud: synced', error: 'cloud: sync error' };
+    this.syncText.textContent = labels[state] || state;
+  }
   setActions(buttons) {
     this.actionsBox.innerHTML = '';
     this.actionsBox.append(el('h2', { text: 'Actions' }));

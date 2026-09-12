@@ -187,16 +187,16 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Packaging and launch
 - Ship a browser distribution with `starhermit.txt` at its root, `name=Skybound Spring`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Read the game scope from the short-lived launch token rather than hard-coding a slug. Use same-origin `/api` and `/ws` routes when hosted. Refresh account tokens through the host shell; never persist access or launch tokens in local storage.
+- Read the game scope from the short-lived launch token rather than hard-coding a slug; hosted mode activates only when that token is read from the URL fragment (stripped after read). Use same-origin `/api` routes when hosted, send `Authorization: Bearer` on every call, and re-mint the token every 45 min via `POST /api/v1/games/{slug}/launch-token`; never persist access or launch tokens in local storage.
 - Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
 
 ### Identity, profile, presence, and preferences
-- Support guest practice locally, then offer account sign-in for durable progress. Use the profile display name and avatar only where identity is useful, honor profile privacy, and send throttled presence heartbeats while actively playing.
+- Support guest practice locally, then pick up the hosted account from the launch token for durable progress. Use the profile display name and avatar only where identity is useful and honor profile privacy; the game sends no presence/activity pings (the platform exposes no per-game endpoint for launch tokens).
 - Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression as a versioned, checksummed document. Resolve conflicts by preserving both snapshots and asking the player when neither is a strict descendant. Never place credentials or private chat in saves.
+- Cloud-save progression as a versioned, checksummed document (one zip+base64 slot at `/api/v1/me/cloud-saves/{slug}`, remote preferred on conflict, debounced saves with a pagehide flush); localStorage stays the offline cache. Never place credentials or private chat in saves.
 
 ### Discovery, activity, and social layer
-- Start and end launch activity so playtime is accurate. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
+- Discovery/activity surfaces stay host-owned chrome; the game makes no activity start/end calls (no launch-token endpoint exists) and remains playable without promotional interruption.
 - Provide a compact friends panel for score comparison and invitations where appropriate. Respect presence visibility and do not expose a hidden or private profile through game UI.
 - Do not create gameplay chat or voice surfaces for the initial release; they are not relevant to the core solo loop. Friends-only leaderboard filtering and shareable challenge seeds supply the social layer without unnecessary communication permissions.
 
@@ -206,7 +206,7 @@ No module may mutate rules state except through a validated command. Rendering c
 - For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 
 ### Sessions and transport
-- The initial game is solo. Use an authoritative JavaScript Game Script only for seeded daily sessions, replay validation, and durable achievement delivery; ordinary practice can run locally and offline after initial load.
+- The initial game is solo. Use the declared own server (`server=server.js`) for replay-validated score submission when present (authenticated, graceful fallback when absent); platform leaderboards are read-only (`/api/v1/leaderboards/{id}/entries`). Achievements stay local — part of the cloud-saved progress doc — with no fabricated unlock endpoint; ordinary practice runs locally and offline after initial load.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 

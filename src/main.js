@@ -34,6 +34,7 @@ class Game {
     this.analytics = new Analytics(this.settings.analyticsConsent);
     this.actions = this.makeActions();
     this.ui = new UI(root, this.actions, this.settings);
+    this.platform.onSync = (s) => this.ui.setSyncStatus(s);
     this.audio = new AudioSys(this.settings, (t) => this.ui.caption(t));
     this.renderer = null;
     this.session = null;
@@ -79,12 +80,24 @@ class Game {
     window.addEventListener('resize', () => this.renderer.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.renderer.resize(), 60));
     document.addEventListener('visibilitychange', () => this.onVisibility());
+    window.addEventListener('pagehide', () => this.platform.flushCloud());
     this.bindInput();
 
     await this.platform.detect();
-    if (this.platform.available) {
-      await this.platform.fetchDaily();
-      this.ui.setStatus('Online — server time synced, ranked daily available.');
+    if (this.platform.hosted) {
+      // Remote progress wins on conflict; localStorage stays the offline cache.
+      this.platform.fetchProfile().then(() => {
+        this.ui.setStatus(`Online as ${this.platform.nickname} — server time synced, cloud save active.`);
+      });
+      const remote = await this.platform.loadCloudSave();
+      if (remote) {
+        this.progress = remote;
+        saveProgress(this.progress);
+        this.ui.announce('Cloud progress loaded.');
+      }
+      if (!this.platform.available) this.ui.setStatus('Online — cloud save active.');
+    } else if (this.platform.available) {
+      this.ui.setStatus('Online (local server) — server time synced, ranked daily available.');
     } else {
       this.ui.setStatus('Offline mode — practice and local daily fully playable.');
     }
@@ -114,7 +127,10 @@ class Game {
     this.replayPlayback = null;
     this.ui.updateHud(null);
     this.ui.hideTutorialOverlay();
-    this.ui.showTitle({ progress: this.progress, daily: this.platform.daily, online: this.platform.available });
+    this.ui.showTitle({
+      progress: this.progress, daily: C.dailyConfig(), online: this.platform.available,
+      name: this.platform.hosted ? this.platform.nickname : null,
+    });
     this.ui.setActions([
       ['Play', () => this.actions.quickPlay(), true],
       ['Journey', () => this.actions.openJourney()],
@@ -203,6 +219,7 @@ class Game {
     const id = meta.stageId || meta.mode;
     const result = recordResult(this.progress, meta.mode, id, score.total, s.terminal);
     const newAch = evaluateAchievements(this.progress, summary);
+    this.platform.queueCloudSave(this.progress);
     for (const key of newAch) {
       const def = C.ACHIEVEMENTS.find(a => a.key === key);
       this.ui.announce(`Achievement unlocked: ${def ? def.name : key}!`);
@@ -230,7 +247,7 @@ class Game {
     if (shouldSubmit && this.platform.available) {
       this.platform.submitScore(envelope, meta.mode).then(r => {
         if (r.ok) submitted = true;
-        else submitError = r.recoverable ? 'temporarily unavailable (rate limit) — score kept locally' : (r.error === 'offline' ? 'offline' : 'rejected: ' + r.error);
+        else submitError = r.recoverable ? 'temporarily unavailable — score kept locally' : (r.error === 'offline' ? 'offline' : 'rejected: ' + r.error);
       }).finally(showResults);
     } else {
       showResults();
@@ -284,6 +301,7 @@ class Game {
         if (!this.progress.tutorialsDone.includes(t.def.id)) {
           this.progress.tutorialsDone.push(t.def.id);
           saveProgress(this.progress);
+          this.platform.queueCloudSave(this.progress);
         }
         this.ui.hideTutorialOverlay();
         this.ui.announce('Lesson complete! Keep climbing to finish the run.');
@@ -413,6 +431,7 @@ class Game {
   onVisibility() {
     if (document.hidden) {
       this.audio.setHidden(true);
+      this.platform.flushCloud();
       if (this.state === 'active') {
         this.hiddenAt = Date.now();
         this.pause('tab hidden');
@@ -517,7 +536,7 @@ class Game {
         }
       },
       playDaily: () => {
-        const daily = this.platform.daily || C.dailyConfig();
+        const daily = C.dailyConfig();
         this.startRun({
           seed: daily.seed, difficulty: daily.difficulty,
           goal: { type: 'none', target: 0 }, mechanics: ['bud', 'drift', 'crumb', 'spring', 'wisp', 'thorn'],
@@ -592,6 +611,7 @@ class Game {
       resetTutorials: () => {
         this.progress.tutorialsDone = [];
         saveProgress(this.progress);
+        this.platform.queueCloudSave(this.progress);
         this.ui.announce('Tutorials reset — find them under Learn.');
       },
     };
