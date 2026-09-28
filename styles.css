@@ -194,6 +194,28 @@ html.reduced-motion * { transition: none !important; animation: none !important;
 
 .slider-row input[type="range"] { flex: 1; min-inline-size: 140px; }
 
+/* Graphics settings section */
+.gfx-section { margin-block: 4px 8px; }
+.gfx-section h2 { margin-block: 12px 4px; }
+.gfx-row { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); flex-wrap: wrap; margin-block: 4px; }
+.gfx-row > span { flex: 1 1 10em; }
+.gfx-row select { min-height: 36px; font-size: 0.95rem; max-inline-size: 100%; flex: 0 1 auto; margin-inline-start: auto; }
+.gfx-slider { flex-wrap: nowrap; }
+.gfx-slider > span { flex: 0 1 auto; white-space: nowrap; }
+.gfx-slider input[type="range"] { flex: 1 1 auto; min-inline-size: 80px; }
+.gfx-scale-value { min-inline-size: 3.2em; text-align: end; font-variant-numeric: tabular-nums; }
+.gfx-summary { overflow-wrap: anywhere; }
+.gfx-note { color: var(--danger); }
+.fps-meter {
+  position: absolute;
+  inset-inline-start: 6px;
+  inset-block-start: 76px;
+  z-index: 4; pointer-events: none;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  font: 600 0.75rem/1.4 ui-monospace, monospace;
+  padding: 2px 8px; border-radius: 6px;
+}
+
 .sr-only {
   position: absolute; inline-size: 1px; block-size: 1px;
   margin: -1px; padding: 0; overflow: hidden;

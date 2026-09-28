@@ -6,6 +6,8 @@
 import { THEMES, ACHIEVEMENTS, TUTORIALS, allStages, CHALLENGES, masteryTrack } from './content.js';
 import { DIFFICULTY } from './rules.js';
 import { GameRenderer } from './render.js';
+import { PRESETS, CATEGORIES, choosePreset, presetTier, resolve } from './gfx.js';
+import { gfxStrings } from './gfx-i18n.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -472,8 +474,7 @@ export class UI {
       el('h2', { text: 'Audio' }),
       slider('Music', 'music'), slider('Effects', 'effects'), slider('Ambience', 'ambience'),
       toggle('Mute all', 'muted'), toggle('Mute when tab hidden', 'muteWhenHidden'), toggle('Captions (text cues for sounds)', 'captions'),
-      el('h2', { text: 'Graphics' }),
-      select('Quality tier', 'quality', [['low', 'Low (battery saver)'], ['medium', 'Medium'], ['high', 'High']]),
+      this.buildGraphicsSection(),
       el('h2', { text: 'Controls' }),
       toggle('Left-handed (swap A/D and arrows)', 'leftHanded'),
       toggle('Hold-to-steer off (toggle steering)', 'toggleSteer'),
@@ -488,6 +489,71 @@ export class UI {
       button('Replay tutorials from the start', () => this.actions.resetTutorials()),
       button('Back', () => backTo ? backTo() : this.actions.toTitle()));
     this.showScreen('Settings', node);
+  }
+
+  /** Graphics section: preset, render scale, per-effect overrides, adaptive resolution, FPS readout. */
+  buildGraphicsSection() {
+    const T = gfxStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+    const section = el('section', { id: 'gfx-section', class: 'gfx-section', 'aria-labelledby': 'gfx-heading' });
+    const save = () => { this.actions.settingsChanged(); render(); };
+    const render = () => {
+      const focusId = section.contains(document.activeElement) ? document.activeElement.id : null;
+      const g = this.settings.graphics || (this.settings.graphics = {});
+      const info = this.actions.graphicsInfo ? this.actions.graphicsInfo(T.sum) : null;
+      const detected = info ? info.detected : 'balanced';
+      const r = info ? info.resolved : resolve(g, detected);
+      section.innerHTML = '';
+      section.append(el('h2', { id: 'gfx-heading', text: T.graphics }));
+
+      const preset = el('select', { id: 'gfx-preset', 'data-gfx': 'preset', 'aria-label': T.quality });
+      preset.append(el('option', { value: 'auto', text: T.auto.replace('{tier}', T[detected]) }));
+      for (const p of PRESETS) preset.append(el('option', { value: p, text: T[p] }));
+      preset.value = PRESETS.includes(g.preset) ? g.preset : 'auto';
+      preset.addEventListener('change', () => { this.settings.graphics = choosePreset(g, preset.value); save(); });
+      section.append(el('label', { class: 'gfx-row' }, el('span', { text: T.quality }), preset));
+
+      const pct = Math.round((Number(g.render_scale) || 1) * 100);
+      const scale = el('input', { id: 'gfx-scale', 'data-gfx': 'render_scale', type: 'range', min: '50', max: '200', step: '5', value: String(pct), 'aria-label': T.renderScale });
+      const out = el('output', { class: 'gfx-scale-value', for: 'gfx-scale', text: pct + '%' });
+      scale.addEventListener('input', () => { out.textContent = scale.value + '%'; });
+      scale.addEventListener('change', () => { g.render_scale = Number(scale.value) / 100; save(); });
+      section.append(el('label', { class: 'gfx-row gfx-slider' }, el('span', { text: T.renderScale }), scale, out));
+
+      for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+        const sel = el('select', { id: 'gfx-cat-' + cat, 'data-gfx-cat': cat, 'aria-label': T.cat[cat] });
+        sel.append(el('option', { value: '', text: T.fromPreset.replace('{tier}', T.tier[presetTier(r.preset, cat)]) }));
+        for (const t of tiers) sel.append(el('option', { value: t, text: T.tier[t] }));
+        sel.value = tiers.includes(g[cat]) ? g[cat] : '';
+        sel.addEventListener('change', () => {
+          if (sel.value) g[cat] = sel.value; else delete g[cat];
+          save();
+        });
+        section.append(el('label', { class: 'gfx-row' }, el('span', { text: T.cat[cat] }), sel));
+      }
+
+      const check = (id, key, label, def) => {
+        const input = el('input', { id, type: 'checkbox', 'data-gfx': key, 'aria-label': label });
+        input.checked = g[key] === undefined ? def : !!g[key];
+        input.addEventListener('change', () => { g[key] = input.checked; save(); });
+        return el('label', { class: 'row' }, input, el('span', { text: label }));
+      };
+      section.append(check('gfx-adaptive', 'adaptive', T.adaptive, true), check('gfx-fps', 'show_fps', T.showFps, false));
+
+      const summary = el('p', { id: 'gfx-summary', class: 'muted small gfx-summary', 'aria-live': 'polite' });
+      const note = el('p', { id: 'gfx-post-note', class: 'small gfx-note', text: T.postFailed });
+      const fill = () => {
+        const i = this.actions.graphicsInfo ? this.actions.graphicsInfo(T.sum) : null;
+        summary.textContent = i ? `${i.gpu} · ${i.summary}` : '';
+        note.hidden = !(i && i.postFailed);
+      };
+      fill();
+      section.append(summary, note);
+      clearInterval(this._gfxTimer);
+      this._gfxTimer = setInterval(() => { if (!section.isConnected) clearInterval(this._gfxTimer); else fill(); }, 1000);
+      if (focusId) document.getElementById(focusId)?.focus();
+    };
+    render();
+    return section;
   }
 
   /* ---------------- in-run updates ---------------- */

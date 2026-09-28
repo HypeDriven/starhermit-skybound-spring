@@ -176,6 +176,63 @@ async function climbToGoal(page) {
   return aimSteer(page, { stopWhen: null, maxMs: 90_000 });
 }
 
+
+// ---------- Graphics settings flow (real visible controls) ----------
+// Opens Settings → Graphics, switches Low then High, overrides Bloom, checks the
+// renderer applied it (data attributes on <body>/<canvas> + summary text), then
+// reloads and confirms persistence, and finally returns to Auto (clears overrides).
+async function openSettings(page, name) {
+  const viaRail = page.locator('.actions-card button', { hasText: 'Settings' }).first();
+  if (await viaRail.isVisible()) await viaRail.click();
+  else await page.locator('.title-panel button', { hasText: 'Settings' }).first().click();
+  await page.waitForFunction(() => window.__game?.ui?.currentScreen === 'Settings');
+  await page.locator('#gfx-section').scrollIntoViewIfNeeded();
+}
+
+async function graphicsFlow(page, name) {
+  const vw = page.viewportSize().width;
+  const attr = () => page.evaluate(() => ({
+    preset: document.body.dataset.gfxPreset,
+    bloom: document.querySelector('#scene-host canvas')?.dataset.gfxBloom,
+    summary: document.getElementById('gfx-summary')?.textContent || '',
+  }));
+  await openSettings(page, name);
+  for (const id of ['#gfx-preset', '#gfx-scale', '#gfx-cat-shadows', '#gfx-cat-bloom', '#gfx-cat-particles', '#gfx-adaptive', '#gfx-fps', '#gfx-summary']) {
+    const loc = page.locator(id);
+    await loc.scrollIntoViewIfNeeded();
+    const bb = await loc.boundingBox();
+    if (!bb || bb.x < 0 || bb.x + bb.width > vw + 1) throw new Error(`${name}: ${id} not fully visible (${JSON.stringify(bb)})`);
+  }
+  await page.selectOption('#gfx-preset', 'low');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+  await page.selectOption('#gfx-preset', 'high');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+  let a = await attr();
+  if (a.bloom !== 'on' || !/bloom/.test(a.summary)) throw new Error(`${name}: High should enable bloom: ${JSON.stringify(a)}`);
+  await page.selectOption('#gfx-cat-bloom', 'off');
+  await page.waitForFunction(() => document.querySelector('#scene-host canvas')?.dataset.gfxBloom === 'off');
+  a = await attr();
+  if (/bloom/.test(a.summary)) throw new Error(`${name}: summary still lists bloom: ${a.summary}`);
+  await page.waitForTimeout(300); // let a few High frames render (console must stay clean)
+  ok(`${name}: Graphics preset Low → High and Bloom override applied live ("${a.summary}")`);
+
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game?.state === 'title');
+  a = await attr();
+  if (a.preset !== 'high' || a.bloom !== 'off') throw new Error(`${name}: graphics not persisted after reload: ${JSON.stringify(a)}`);
+  await openSettings(page, name);
+  const pv = await page.inputValue('#gfx-preset');
+  const bv = await page.inputValue('#gfx-cat-bloom');
+  if (pv !== 'high' || bv !== 'off') throw new Error(`${name}: panel lost values after reload (${pv}, ${bv})`);
+  // Back to Auto: overrides cleared, Auto resolves from the (software) GPU.
+  await page.selectOption('#gfx-preset', 'auto');
+  await page.waitForFunction(() => document.body.dataset.gfxAuto === 'true');
+  if ((await page.inputValue('#gfx-cat-bloom')) !== '') throw new Error(`${name}: choosing a preset did not clear the Bloom override`);
+  await page.locator('.settings-panel button', { hasText: 'Back' }).last().click();
+  await page.waitForFunction(() => window.__game?.ui?.currentScreen === 'Title');
+  ok(`${name}: graphics settings survive reload; Auto preset clears overrides (now ${await page.evaluate(() => document.body.dataset.gfxPreset)})`);
+}
+
 // ---------- one full pass ----------
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
@@ -183,7 +240,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
@@ -200,6 +257,8 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.waitForFunction(() => !!window.__game && window.__game.state === 'title');
     await page.screenshot({ path: SHOT('title', name) });
     ok(`${name}: title screen visible (state "title", WebGL ok)`);
+
+    await graphicsFlow(page, name);
 
     if (full) {
       // ---- Settings open via the real rail button (pointer) then the Back
@@ -319,7 +378,7 @@ let browser = null;
 try {
   browser = await chromium.launch({
     executablePath: '/usr/bin/google-chrome',
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--mute-audio'],
+    args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'],
   });
   console.log(`serving ${ROOT} at ${BASE}`);
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });

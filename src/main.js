@@ -9,6 +9,7 @@ import { GameRenderer } from './render.js';
 import { UI } from './ui.js';
 import { AudioSys } from './audio.js';
 import { Platform } from './platform.js';
+import { DEFAULT_GRAPHICS } from './gfx.js';
 import {
   RunSession, Analytics, loadLocal, saveLocal, loadProgress, saveProgress,
   recordResult, evaluateAchievements,
@@ -16,13 +17,19 @@ import {
 
 const DEFAULT_SETTINGS = {
   music: 0.5, effects: 0.7, ambience: 0.4, muted: false, muteWhenHidden: true,
-  captions: false, quality: 'medium', leftHanded: false, toggleSteer: false,
+  captions: false, graphics: { ...DEFAULT_GRAPHICS }, leftHanded: false, toggleSteer: false,
   hapticsOff: false, largeText: false, highContrast: false, reducedMotion: false,
   cvdPalette: 'default', timingAssist: false, analyticsConsent: false,
 };
 
 function loadSettings() {
-  return { ...DEFAULT_SETTINGS, ...(loadLocal('settings', null) || {}) };
+  const saved = loadLocal('settings', null) || {};
+  const s = { ...DEFAULT_SETTINGS, ...saved };
+  // Graphics live in their own object (preset + per-effect overrides); the old
+  // single "quality" tier is superseded by the Auto preset.
+  s.graphics = { ...DEFAULT_GRAPHICS, ...(saved.graphics && typeof saved.graphics === 'object' ? saved.graphics : {}) };
+  delete s.quality;
+  return s;
 }
 
 class Game {
@@ -604,10 +611,11 @@ class Game {
         this.analytics.setConsent(this.settings.analyticsConsent);
         if (this.renderer) {
           this.renderer.settings = this.settings;
-          this.renderer.setQuality(this.settings.quality);
+          this.renderer.setGraphics(this.settings.graphics);
         }
         this.analytics.track('settings-change', {});
       },
+      graphicsInfo: (labels) => (this.renderer && this.renderer.ok ? this.renderer.graphicsInfo(labels) : null),
       resetTutorials: () => {
         this.progress.tutorialsDone = [];
         saveProgress(this.progress);
