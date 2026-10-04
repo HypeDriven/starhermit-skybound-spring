@@ -70,6 +70,7 @@ html.reduced-motion * { transition: none !important; animation: none !important;
   border: 2px solid var(--ink-soft);
   background: var(--panel);
 }
+html.left-handed .thumb-tray { justify-content: flex-start; }
 .thumb-btn:active { background: var(--accent); color: #fff; }
 
 .hud {
@@ -262,3 +263,5 @@ html.reduced-motion * { transition: none !important; animation: none !important;
   .panel { max-block-size: 94dvh; }
   .thumb-btn { min-height: 48px; }
 }
+.sh-toast { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 80; max-width: min(92vw, 520px); margin: 0; padding: 10px 16px; border-radius: 10px; background: rgba(18, 30, 48, .94); color: #f3f7fb; font-size: 14px; text-align: center; overflow-wrap: anywhere; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+.sh-toast[hidden] { display: none; }

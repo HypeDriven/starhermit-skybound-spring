@@ -28,12 +28,10 @@
  * real pointer clicks (settings Back, mobile title Play) and still exercises
  * the rail action buttons + thumb-tray steer + Esc pause via real input.
  *
- * Serving: the game is fully playable offline (platform.detect sets
- * `available=false` when /api/* is absent/blank and every screen works
- * locally). Per sibling convention this test embeds a minimal node:http static
- * server on an ephemeral port and answers /api/* with `200 {}` so the client
- * degrades to its documented offline path with zero console noise. The
- * authoritative `server.js` is not required for a solo offline playthrough.
+ * Serving: the game is fully playable offline and, with no launch token,
+ * makes no own-server calls. This test embeds a minimal node:http static
+ * server (no /api routes) on an ephemeral port and fails on any same-origin
+ * /api or /ws request.
  *
  * Run: npm run test:e2e  (or: node tests/e2e.mjs)
  */
@@ -71,13 +69,6 @@ const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    if (p.startsWith('/api/')) {
-      // No StarHermit backend here: answer API probes with empty JSON (200) so
-      // the platform adapter detects 'offline' without console noise.
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{}');
-      return;
-    }
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(file);
@@ -242,12 +233,16 @@ async function runPass(browser, name, ctxOpts, { full }) {
   page.on('console', (m) => {
     if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
+    if (/Failed to load resource/.test(m.text()) && /\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
   });
   page.on('response', (r) => {
     const p = r.url();
-    if (r.status() >= 400 && !/\/api\/|\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+    if (r.status() >= 400 && !/\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+  });
+  page.on('request', (req) => {
+    const u = new URL(req.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
   });
 
   try {

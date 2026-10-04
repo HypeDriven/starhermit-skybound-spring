@@ -42,6 +42,11 @@ class Game {
     this.actions = this.makeActions();
     this.ui = new UI(root, this.actions, this.settings);
     this.platform.onSync = (s) => this.ui.setSyncStatus(s);
+    this.platform.onSignedOut = () => {
+      this.ui.toast(this.ui.sh.signedOut);
+      this.ui.setStatus('Offline mode — practice and local daily fully playable.');
+      if (this.state === 'title') this.toTitle('signed out');
+    };
     this.audio = new AudioSys(this.settings, (t) => this.ui.caption(t));
     this.renderer = null;
     this.session = null;
@@ -90,11 +95,10 @@ class Game {
     window.addEventListener('pagehide', () => this.platform.flushCloud());
     this.bindInput();
 
-    await this.platform.detect();
     if (this.platform.hosted) {
       // Remote progress wins on conflict; localStorage stays the offline cache.
       this.platform.fetchProfile().then(() => {
-        this.ui.setStatus(`Online as ${this.platform.nickname} — server time synced, cloud save active.`);
+        this.ui.setStatus(`Online as ${this.platform.nickname} — cloud save active.`);
       });
       const remote = await this.platform.loadCloudSave();
       if (remote) {
@@ -102,14 +106,39 @@ class Game {
         saveProgress(this.progress);
         this.ui.announce('Cloud progress loaded.');
       }
-      if (!this.platform.available) this.ui.setStatus('Online — cloud save active.');
-    } else if (this.platform.available) {
-      this.ui.setStatus('Online (local server) — server time synced, ranked daily available.');
+      // Platform settings win over local ones; then the player's key bindings.
+      const prefs = await this.platform.loadSettings();
+      if (Object.keys(prefs).length) {
+        for (const k of Object.keys(DEFAULT_SETTINGS)) if (prefs[k] !== undefined && prefs[k] !== null) this.settings[k] = prefs[k];
+        this.settings.graphics = { ...DEFAULT_GRAPHICS, ...(this.settings.graphics || {}) };
+        this.applySettingsLocal();
+      }
+      await this.platform.loadControls();
+      this.ui.setKeyLabels(this.keyLabels());
+      this.ui.setStatus('Online — cloud save active.');
     } else {
       this.ui.setStatus('Offline mode — practice and local daily fully playable.');
     }
     this.toTitle('boot complete');
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /** Persist + apply the current settings locally (no platform mirror). */
+  applySettingsLocal() {
+    saveLocal('settings', this.settings);
+    this.ui.applySettings();
+    this.audio.applySettings();
+    this.analytics.setConsent(this.settings.analyticsConsent);
+    if (this.renderer) {
+      this.renderer.settings = this.settings;
+      this.renderer.setGraphics(this.settings.graphics);
+    }
+  }
+
+  /** Effective key bindings for the Help screen. */
+  keyLabels() {
+    const p = this.platform;
+    return { left: p.keyLabel('left'), right: p.keyLabel('right'), pause: p.keyLabel('pause'), undo: p.keyLabel('undo') };
   }
 
   compatPanel() {
@@ -135,8 +164,10 @@ class Game {
     this.ui.updateHud(null);
     this.ui.hideTutorialOverlay();
     this.ui.showTitle({
-      progress: this.progress, daily: C.dailyConfig(), online: this.platform.available,
+      progress: this.progress, daily: C.dailyConfig(),
       name: this.platform.hosted ? this.platform.nickname : null,
+      canSignIn: this.platform.canSignIn(),
+      inviteLink: this.platform.inviteLink(),
     });
     this.ui.setActions([
       ['Play', () => this.actions.quickPlay(), true],
@@ -234,31 +265,18 @@ class Game {
     }
     this.analytics.track('round-end', { mode: meta.mode, score: score.total, reason: s.terminal.reason });
 
-    const envelope = this.session.buildEnvelope();
-    const shouldSubmit = this.session.ranked && (meta.mode === 'daily' || meta.mode === 'practice' || meta.mode === 'journey');
-    let submitted = false;
-    let submitError = null;
-    const showResults = () => {
-      this.setState('results', 'run resolved');
-      const nextAction = this.nextRecommendedAction(meta, result);
-      this.ui.showResults({
-        score, terminal: s.terminal, isBest: result.isBest, best: result.best, prevBest: result.prevBest,
-        newAchievements: newAch, submitted, submitError, nextAction,
-        modeLabel: meta.label, par: meta.par,
-      });
-      this.ui.setActions([
-        ['Retry', () => this.actions.restartRun(), true],
-        ['Title', () => this.toTitle('results done')],
-      ]);
-    };
-    if (shouldSubmit && this.platform.available) {
-      this.platform.submitScore(envelope, meta.mode).then(r => {
-        if (r.ok) submitted = true;
-        else submitError = r.recoverable ? 'temporarily unavailable — score kept locally' : (r.error === 'offline' ? 'offline' : 'rejected: ' + r.error);
-      }).finally(showResults);
-    } else {
-      showResults();
-    }
+    // Scores stay local (cloud-saved when signed in); nothing is submitted.
+    this.setState('results', 'run resolved');
+    const nextAction = this.nextRecommendedAction(meta, result);
+    this.ui.showResults({
+      score, terminal: s.terminal, isBest: result.isBest, best: result.best, prevBest: result.prevBest,
+      newAchievements: newAch, nextAction,
+      modeLabel: meta.label, par: meta.par,
+    });
+    this.ui.setActions([
+      ['Retry', () => this.actions.restartRun(), true],
+      ['Title', () => this.toTitle('results done')],
+    ]);
   }
 
   nextRecommendedAction(meta, result) {
@@ -353,26 +371,26 @@ class Game {
   /* ---------------- input ---------------- */
 
   bindInput() {
+    const held = (action) => (this.platform.controls[action] || []).some((c) => this.keys.has(c));
     const keyDir = () => {
-      const lh = this.settings.leftHanded;
-      let left = this.keys.has('ArrowLeft') || this.keys.has(lh ? 'KeyD' : 'KeyA');
-      let right = this.keys.has('ArrowRight') || this.keys.has(lh ? 'KeyA' : 'KeyD');
-      if (lh) { const tmp = left; left = this.keys.has('ArrowRight') || right; right = tmp || this.keys.has('ArrowLeft'); }
+      const left = held('left');
+      const right = held('right');
       return (right ? 1 : 0) - (left ? 1 : 0);
     };
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
-      if (e.code === 'Escape' || e.code === 'KeyP') {
+      const action = this.platform.actionFor(e.code);
+      if (action === 'pause') {
         if (this.state === 'active') this.pause('keyboard');
         else if (this.state === 'paused') this.resume('keyboard');
         return;
       }
-      if (e.code === 'KeyZ' && this.state === 'active' && this.session && this.session.allowUndo) {
+      if (action === 'undo' && this.state === 'active' && this.session && this.session.allowUndo) {
         this.actions.undo();
         return;
       }
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code) &&
+      if ((['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code) || action === 'left' || action === 'right') &&
           ['active', 'countdown'].includes(this.state)) {
         e.preventDefault();
       }
@@ -419,7 +437,6 @@ class Game {
       const ax = gp.axes[0] || 0;
       const dpad = (gp.buttons[15] && gp.buttons[15].pressed ? 1 : 0) - (gp.buttons[14] && gp.buttons[14].pressed ? 1 : 0);
       let dir = dpad || (Math.abs(ax) > 0.3 ? Math.sign(ax) : 0);
-      if (this.settings.leftHanded) dir = -dir;
       if (gp.buttons[9] && gp.buttons[9].pressed) {
         const now = performance.now();
         if (now - this._gamepadTimer > 400) {
@@ -549,7 +566,7 @@ class Game {
           goal: { type: 'none', target: 0 }, mechanics: ['bud', 'drift', 'crumb', 'spring', 'wisp', 'thorn'],
         }, {
           mode: 'daily', label: `Daily ${daily.date || 'challenge'}`, theme: daily.theme,
-          ranked: this.platform.available, allowUndo: false, reason: 'daily start',
+          ranked: false, allowUndo: false, reason: 'daily start',
         });
       },
       playPractice: (tier, seed) => {
@@ -605,15 +622,16 @@ class Game {
       steerStart: (dir) => { this.touchDir = dir; },
       steerStop: () => { this.touchDir = 0; },
       settingsChanged: () => {
-        saveLocal('settings', this.settings);
-        this.ui.applySettings();
-        this.audio.applySettings();
-        this.analytics.setConsent(this.settings.analyticsConsent);
-        if (this.renderer) {
-          this.renderer.settings = this.settings;
-          this.renderer.setGraphics(this.settings.graphics);
-        }
+        this.applySettingsLocal();
+        this.platform.pushSettings(this.settings); // platform settings KV mirror
         this.analytics.track('settings-change', {});
+      },
+      signIn: () => this.platform.signIn(),
+      copyInvite: async () => {
+        const link = this.platform.inviteLink();
+        if (!link) return;
+        try { await navigator.clipboard.writeText(link); this.ui.toast(this.ui.sh.copied); }
+        catch { this.ui.toast(this.ui.sh.copyFailed + ': ' + link); }
       },
       graphicsInfo: (labels) => (this.renderer && this.renderer.ok ? this.renderer.graphicsInfo(labels) : null),
       resetTutorials: () => {

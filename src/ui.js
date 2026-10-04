@@ -8,6 +8,7 @@ import { DIFFICULTY } from './rules.js';
 import { GameRenderer } from './render.js';
 import { PRESETS, CATEGORIES, choosePreset, presetTier, resolve } from './gfx.js';
 import { gfxStrings } from './gfx-i18n.js';
+import { shStrings } from './sh-i18n.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -34,6 +35,8 @@ export class UI {
     this.settings = initialSettings;
     this.screenStack = [];
     this.lastFocus = null;
+    this.sh = shStrings(typeof navigator !== 'undefined' && navigator.language);
+    this.keys = { left: '← / A', right: '→ / D', pause: 'Esc / P', undo: 'Z' };
     this.build();
     this.applySettings();
   }
@@ -196,9 +199,9 @@ export class UI {
   /* ---------------- screens ---------------- */
 
   showTitle(data) {
-    const { progress, daily, online, name } = data;
+    const { progress, daily, name, canSignIn, inviteLink } = data;
     const done = Object.keys(progress.stagesCompleted).length;
-    const onlineText = name ? `Online as ${name}` : (online ? 'Online — ranked daily available' : 'Offline — practice & local daily');
+    const onlineText = name ? `Online as ${name}` : 'Offline — practice & local daily';
     const node = el('div', { class: 'panel title-panel' },
       el('h1', { class: 'game-title', text: 'Skybound Spring' }),
       el('p', { class: 'tagline', text: 'Bounce up the endless garden. Chain landings, dodge thorns, chase the sky.' }),
@@ -213,6 +216,9 @@ export class UI {
         button('Profile', () => this.actions.openProfile())),
       el('div', { class: 'row gap' },
         button('Settings', () => this.showSettings()), button('Help', () => this.showHelp())),
+      (canSignIn || inviteLink) ? el('div', { class: 'row gap' },
+        canSignIn ? button(this.sh.signIn, () => this.actions.signIn()) : null,
+        inviteLink ? button(this.sh.invite, () => this.actions.copyInvite()) : null) : null,
       el('p', { class: 'muted', text: `Journey: ${done}/40 stages · ${onlineText}` }),
     );
     this.showScreen('Title', node);
@@ -337,22 +343,7 @@ export class UI {
       return;
     }
 
-    const scopes = platform.available ? ['global', 'daily', 'weekly'] : [];
-    if (!scopes.length) {
-      boardsNode.append(el('p', { class: 'muted', text: 'Offline — leaderboards need the hosted server.' }), localBests);
-      return;
-    }
-    for (const scope of scopes) {
-      const wrap = el('div', { class: 'card' }, el('h3', { text: scope[0].toUpperCase() + scope.slice(1) }), el('ol', { class: 'board-list' }));
-      boardsNode.append(wrap);
-      const r = await platform.leaderboard(scope);
-      const list = wrap.querySelector('.board-list');
-      if (!r.ok) { wrap.append(el('p', { class: 'muted', text: r.recoverable ? 'Temporarily unavailable (rate limit) — try again soon.' : 'Unavailable offline.' })); continue; }
-      if (!r.entries.length) { wrap.append(el('p', { class: 'muted', text: 'No entries yet — be the first!' })); continue; }
-      for (const e of r.entries.slice(0, 10)) {
-        list.append(el('li', {}, `${e.playerName || 'Guest'} — ${e.score} (${e.mode})`));
-      }
-    }
+    boardsNode.append(el('p', { class: 'muted', text: 'Offline — online leaderboards need a StarHermit sign-in.' }), localBests);
   }
 
   showPause(data) {
@@ -370,7 +361,7 @@ export class UI {
   }
 
   showResults(data) {
-    const { score, terminal, isBest, best, prevBest, newAchievements, submitted, submitError, nextAction, modeLabel, par } = data;
+    const { score, terminal, isBest, best, prevBest, newAchievements, nextAction, modeLabel, par } = data;
     const reasons = {
       fell: 'You fell below the garden.', hazard: 'Thorns got you.', 'goal-reached': 'Goal reached!',
       'move-limit': 'Steering budget spent.', 'time-out': 'Out of time.',
@@ -386,7 +377,7 @@ export class UI {
       par ? el('p', { class: 'muted', text: `Par: ${par}s` }) : null,
       el('p', { class: 'muted', text: isBest ? `New best!${prevBest ? ` (was ${prevBest})` : ""}` : `Best: ${best}` }),
       newAchievements.length ? el('p', { class: 'achv', text: 'Achievement unlocked: ' + newAchievements.join(', ') }) : null,
-      el('p', { class: 'muted small', text: submitted ? 'Score validated & submitted to leaderboard.' : (submitError ? `Leaderboard: ${submitError}` : 'Unranked run.') }),
+      el('p', { class: 'muted small', text: 'Score saved to your local bests.' }),
       el('div', { class: 'row gap' },
         button('Retry', () => this.actions.restartRun(), 'btn btn-primary'),
         button('Watch replay', () => this.actions.replayRun()),
@@ -428,7 +419,7 @@ export class UI {
   showHelp(backTo) {
     const cards = [
       ['Auto-bounce', 'Your sprout-hopper bounces on its own. Land on pads to keep climbing — each landing bounces you again.'],
-      ['Steering', 'Hold ← / → or A / D to drift sideways. On touch, drag or hold the bottom corners. Gamepad: left stick or D-pad.'],
+      ['Steering', `Hold ${this.keys.left} or ${this.keys.right} to drift sideways.`+' On touch, drag or hold the bottom corners. Gamepad: left stick or D-pad.'],
       ['Screen wrap', 'Fly off the left edge and you reappear on the right (and vice versa). Classic garden physics!'],
       ['Leaf pads (green)', 'Safe, sturdy, unlimited bounces.'],
       ['Moving leaves (blue)', 'Slide sideways near their perch. Time your landing.'],
@@ -439,7 +430,8 @@ export class UI {
       ['Glow motes (gold)', 'Worth 100 points each. Grab them mid-flight.'],
       ['Chains', 'Land on successively higher pads to grow your chain bonus. Dropping to a lower pad resets it.'],
       ['Falling', 'The camera only moves up. Fall below the bottom of the view and the run ends.'],
-      ['Undo (practice)', 'Press Z in practice to jump back to your last landing.'],
+      ['Undo (practice)', `Press ${this.keys.undo} in practice to jump back to your last landing.`],
+      ['Pause', `Press ${this.keys.pause} to pause or resume.`],
     ];
     const node = el('div', { class: 'panel' },
       el('h1', { text: 'How to play' }),
@@ -476,7 +468,7 @@ export class UI {
       toggle('Mute all', 'muted'), toggle('Mute when tab hidden', 'muteWhenHidden'), toggle('Captions (text cues for sounds)', 'captions'),
       this.buildGraphicsSection(),
       el('h2', { text: 'Controls' }),
-      toggle('Left-handed (swap A/D and arrows)', 'leftHanded'),
+      toggle('Left-handed layout', 'leftHanded'),
       toggle('Hold-to-steer off (toggle steering)', 'toggleSteer'),
       toggle('Haptics off', 'hapticsOff'),
       el('h2', { text: 'Accessibility' }),
@@ -571,6 +563,17 @@ export class UI {
   }
 
   setStatus(text) { this.statusText.textContent = text; }
+  setKeyLabels(keys) { this.keys = keys; }
+  toast(msg) {
+    if (!this.toastEl) {
+      this.toastEl = el('p', { class: 'sh-toast', role: 'status', 'aria-live': 'polite' });
+      this.root.append(this.toastEl);
+    }
+    this.toastEl.textContent = msg;
+    this.toastEl.hidden = false;
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => { this.toastEl.hidden = true; }, 3200);
+  }
   setSyncStatus(state) {
     const labels = { offline: 'offline (local save)', local: 'cloud: not uploaded yet', saving: 'cloud: saving…', synced: 'cloud: synced', error: 'cloud: sync error' };
     this.syncText.textContent = labels[state] || state;
@@ -585,6 +588,7 @@ export class UI {
 
   applySettings() {
     const s = this.settings;
+    document.documentElement.classList.toggle('left-handed', !!s.leftHanded);
     document.documentElement.classList.toggle('large-text', !!s.largeText);
     document.documentElement.classList.toggle('high-contrast', !!s.highContrast);
     document.documentElement.classList.toggle('reduced-motion', !!s.reducedMotion);
