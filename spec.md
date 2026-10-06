@@ -76,6 +76,7 @@ The Three.js canvas fills the game region but is never the only UI. Menus, text,
 - **Compact desktop/tablet:** playfield remains central; secondary rails collapse into closed-by-default drawers opened from Objective/Actions chips (one at a time, ✕ or scrim tap closes) so the playfield and steering tray are never covered until asked. Pointer hover may preview but never be required.
 - **Portrait mobile:** top safe-area status bar, square or perspective-fit playfield, bottom thumb-zone action tray, and sheet-based secondary panels. Never place critical controls under browser chrome or display cutouts.
 - **Landscape mobile:** rails stay as drawers over the full-height playfield with the steering tray below it; preserve at least 44×44 CSS-pixel targets and 8-pixel separation.
+- **Large screens (above 1600×1000):** the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000)`, capped at 2.5); the rails, HUD pill, steering tray, overlay screens, tutorial bar, captions, toast and FPS meter are each zoomed by it and the rail grid tracks widen by the same factor, while the 3D canvas in the scene column stays unzoomed. Overlay panels never exceed the scene column's height (they scroll inside), and the Journey stage picker always uses the full panel width.
 - React to resize, orientation, device-pixel-ratio, safe-area insets, virtual keyboard, and visibility changes without losing input or restarting the round.
 
 ### Screens and overlays

@@ -302,7 +302,7 @@ class Game {
       ranked: false, allowUndo: false, reason: 'tutorial start',
     });
     this.ui.showTutorialOverlay(def.steps[0].text, 0, def.steps.length);
-    this.announce(def.steps[0].text);
+    this.ui.announce(def.steps[0].text);
   }
 
   tutorialTick() {
@@ -334,7 +334,7 @@ class Game {
         return;
       }
       this.ui.showTutorialOverlay(t.def.steps[t.stepIdx].text, t.stepIdx, t.def.steps.length);
-      this.announce(t.def.steps[t.stepIdx].text);
+      this.ui.announce(t.def.steps[t.stepIdx].text);
     }
   }
 
