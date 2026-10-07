@@ -215,12 +215,12 @@ No module may mutate rules state except through a validated command. Rendering c
 - For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
 
 ### Sessions and transport
-- The initial game is solo. Scores stay as local bests (cloud-saved when signed in); the client submits nothing. Platform leaderboards are read-only (`StarHermit.leaderboard()`, names resolved to nicknames). Achievements stay local — part of the cloud-saved progress doc — with no fabricated unlock endpoint; ordinary practice runs locally and offline after initial load.
+- The initial game is solo. Scores stay as local bests (cloud-saved when signed in). Signed in, every finished Journey, Daily or Challenge run (not Learn or Practice) also posts its total through `StarHermit.submitScores` (a practice session whose `score-script.js` posts it to the `high-score` board: integer, higher is better, 0–1,000,000), and the results screen shows "Posting score to the leaderboard…", then "Leaderboard rank: #N" (or posted / not posted) in the nine locales (`src/sh-i18n.js`); standalone posts nothing and shows no line. The boards screen reads `StarHermit.leaderboard()` (names resolved to nicknames). Achievements stay local — part of the cloud-saved progress doc — with no fabricated unlock endpoint; ordinary practice runs locally and offline after initial load.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- The platform script is `score-script.js` (declared `server=score-script.js`; canonical copy in the games repo's `tools/score-script.js`): it range-checks a run total and posts it to the `high-score` board. `server.js` is the local dev server. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 

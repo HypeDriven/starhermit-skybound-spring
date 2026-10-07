@@ -265,14 +265,18 @@ class Game {
     }
     this.analytics.track('round-end', { mode: meta.mode, score: score.total, reason: s.terminal.reason });
 
-    // Scores stay local (cloud-saved when signed in); nothing is submitted.
+    // Bests stay local (cloud-saved when signed in). Signed in, a finished
+    // Journey, Daily or Challenge run also posts its total to the StarHermit
+    // high-score board and the results screen shows the rank there.
+    const postLeaderboard = this.platform.hosted && ['journey', 'daily', 'challenge'].includes(meta.mode);
     this.setState('results', 'run resolved');
     const nextAction = this.nextRecommendedAction(meta, result);
     this.ui.showResults({
       score, terminal: s.terminal, isBest: result.isBest, best: result.best, prevBest: result.prevBest,
       newAchievements: newAch, nextAction,
-      modeLabel: meta.label, par: meta.par,
+      modeLabel: meta.label, par: meta.par, postLeaderboard,
     });
+    if (postLeaderboard) this.platform.submitScore(score.total).then((r) => this.ui.setLeaderboardResult(r));
     this.ui.setActions([
       ['Retry', () => this.actions.restartRun(), true],
       ['Title', () => this.toTitle('results done')],

@@ -378,6 +378,7 @@ export class UI {
       el('p', { class: 'muted', text: isBest ? `New best!${prevBest ? ` (was ${prevBest})` : ""}` : `Best: ${best}` }),
       newAchievements.length ? el('p', { class: 'achv', text: 'Achievement unlocked: ' + newAchievements.join(', ') }) : null,
       el('p', { class: 'muted small', text: 'Score saved to your local bests.' }),
+      data.postLeaderboard ? el('p', { class: 'muted', id: 'results-lb', role: 'status', text: this.sh.lbPosting }) : null,
       el('div', { class: 'row gap' },
         button('Retry', () => this.actions.restartRun(), 'btn btn-primary'),
         button('Watch replay', () => this.actions.replayRun()),
@@ -385,6 +386,14 @@ export class UI {
       button('Continue', () => this.actions.toTitle()));
     this.showScreen('Results', node);
     this.announce(`Run over. ${reasons[terminal.reason]}. Total score ${score.total}.`, true);
+  }
+
+  /** Results line for the StarHermit board: { posted, rank } from Platform.submitScore. */
+  setLeaderboardResult(r) {
+    const line = document.getElementById('results-lb');
+    if (!line) return;
+    line.textContent = !r.posted ? this.sh.lbNotPosted
+      : r.rank ? this.sh.lbRank.replace('{rank}', r.rank) : this.sh.lbPosted;
   }
 
   showCountdown(n) {

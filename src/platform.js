@@ -175,7 +175,25 @@ export class Platform {
     return (this.controls[action] || []).map((c) => NAMES[c] || c.replace(/^Key|^Digit/, '')).join(' / ');
   }
 
-  /* ---------------- read-only boards ---------------- */
+  /* ---------------- boards ---------------- */
+
+  /**
+   * Post a finished run to the leaderboards (score-script.js); resolves
+   * { posted, rank } — rank on the high-score board, or null. Hosted only.
+   */
+  async submitScore(total) {
+    if (!this.hosted) return { posted: false, rank: null };
+    const sh = SH();
+    try {
+      const keys = await sh.submitScores({ 'high-score': total });
+      if (!(keys || []).includes('high-score')) return { posted: false, rank: null };
+      try {
+        const r = await sh.leaderboard('high-score', { pageSize: 100 });
+        const me = (r.items || []).find((e) => String(e.userId) === this.userId);
+        return { posted: true, rank: me ? me.rank : null };
+      } catch { return { posted: true, rank: null }; }
+    } catch { return { posted: false, rank: null }; }
+  }
 
   /**
    * Read-only boards. Hosted: the platform leaderboard (entries resolved to
