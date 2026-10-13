@@ -1091,7 +1091,7 @@ export class GameRenderer {
     }
     if (this.composer) {
       try {
-        this.composer.render(dt);
+        (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dt)) : this.composer.render(dt));
         return;
       } catch {
         this.postFailed = true;
@@ -1099,7 +1099,7 @@ export class GameRenderer {
         this._buildPost(w, h);
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   /** Concise navigable text mirror of the board for screen readers. */

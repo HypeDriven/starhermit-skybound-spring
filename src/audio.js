@@ -35,9 +35,9 @@ export class AudioSys {
       return g;
     };
     this.buses = {
-      music: mk(this.settings.music),
-      effects: mk(this.settings.effects),
-      ambience: mk(this.settings.ambience),
+      music: (globalThis.GameOptions ? globalThis.GameOptions.tagBus(mk(this.settings.music), 'music') : mk(this.settings.music)),
+      effects: (globalThis.GameOptions ? globalThis.GameOptions.tagBus(mk(this.settings.effects), 'effects') : mk(this.settings.effects)),
+      ambience: (globalThis.GameOptions ? globalThis.GameOptions.tagBus(mk(this.settings.ambience), 'ambience') : mk(this.settings.ambience)),
     };
     this.startAmbience();
     this.startMusic();
@@ -66,7 +66,7 @@ export class AudioSys {
   blip(bus, { type = 'sine', f0 = 440, f1 = f0, dur = 0.12, gain = 0.2, attack = 0.004 }) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
+    const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), bus) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     o.type = type;
     o.frequency.setValueAtTime(f0, t);
@@ -86,7 +86,7 @@ export class AudioSys {
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 1.6;
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), bus) : this.ctx.createBufferSource());
     src.buffer = buf;
     const f = this.ctx.createBiquadFilter();
     f.type = 'bandpass';
@@ -146,7 +146,7 @@ export class AudioSys {
     const name = names[Math.floor(rngRange(this.rng, 0, names.length)) % names.length];
     const buf = this.sfxBuffers.get(name);
     if (buf) {
-      const src = this.ctx.createBufferSource();
+      const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), event) : this.ctx.createBufferSource());
       src.buffer = buf;
       src.connect(this.buses.effects);
       src.start();
@@ -241,7 +241,7 @@ export class AudioSys {
       last = last * 0.97 + (Math.random() * 2 - 1) * 0.05;
       d[i] = last;
     }
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = buf;
     src.loop = true;
     const f = ctx.createBiquadFilter();
@@ -250,7 +250,7 @@ export class AudioSys {
     const g = ctx.createGain();
     g.gain.value = 0.5;
     // slow swell LFO
-    const lfo = ctx.createOscillator();
+    const lfo = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
     lfo.frequency.value = 0.07;
     const lfoG = ctx.createGain();
     lfoG.gain.value = 0.2;
