@@ -44,7 +44,7 @@ test('hosted: token, profile, cloud save, settings, controls, board, sign-out', 
     calls.push({ url, method, auth: init.headers.Authorization, body: init.body, keepalive: init.keepalive });
     if (path === `/api/v1/users/${USER}/profile`) return res(200, { username: 'hop_u', nickname: 'Hopper' });
     if (path === '/api/v1/me/cloud-saves/' + encodeURIComponent('game:' + SLUG)) {
-      if (method === 'PUT') { save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return res(204); }
+      if (method === 'PUT') { save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return res(200, { etag: '"v' + calls.length + '"' }); }
       return save ? res(200, new Uint8Array(save)) : res(404);
     }
     if (path === `/api/v1/games/${SLUG}/settings`) {
@@ -117,6 +117,72 @@ test('standalone: no platform fetch', async () => {
 });
 
 test('on-platform without a token: sign-in offered', () => {
-  globalThis.StarHermit = SDK.create({ window: win('', 'skybound-spring.starhermit.com'), fetch: async () => res(500) });
+  // canSignIn() is only true on a game's UUID host (<uuid>.starhermit.com).
+  globalThis.StarHermit = SDK.create({ window: win('', '0b9d6f2e-3c4a-4e5b-9a7c-1d2e3f405162.starhermit.com'), fetch: async () => res(500) });
   assert.equal(new Platform().canSignIn(), true);
+});
+
+test('save conflict: another device saved first → reload, merge, save the merge', async () => {
+  const { mergeProgress } = await import('../src/session.js');
+  const path = '/api/v1/me/cloud-saves/' + encodeURIComponent('game:' + SLUG);
+  const zipOf = async (obj) => {
+    // Let a throwaway SDK build the zip bytes the platform would store.
+    let bytes = null;
+    const sdk = SDK.create({ window: win('#game_token=' + TOKEN), fetch: async (url, init = {}) => {
+      if (init.method === 'PUT') { bytes = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return res(200, { etag: '"x"' }); }
+      return res(404);
+    }, setTimeout: () => 0, clearTimeout() {} });
+    sdk.init();
+    await sdk.writeSave(JSON.stringify(obj));
+    return bytes;
+  };
+  let stored = await zipOf({ v: 1, progress: { stagesCompleted: { 'stage-01': 900 }, bests: { journey: 900 }, achievements: {}, daysPlayed: ['2026-10-01'], tutorialsDone: [] } });
+  let etag = '"v1"';
+  const puts = [];
+  const fetch = async (url, init = {}) => {
+    const method = init.method || 'GET', p = url.split('?')[0];
+    if (p === path + '/info') return res(200, { exists: !!stored, etag });
+    if (p === path && method === 'GET') return res(200, new Uint8Array(stored));
+    if (p === path && method === 'PUT') {
+      const match = init.headers['If-Match'];
+      puts.push(match);
+      if (match && match !== etag) return res(412, { error: 'precondition_failed', etag });
+      stored = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+      etag = '"v' + (puts.length + 1) + '"';
+      return res(200, { etag });
+    }
+    return res(404);
+  };
+  globalThis.StarHermit = SDK.create({ window: win('#game_token=' + TOKEN), fetch, setTimeout: () => 0, clearTimeout() {} });
+  const p = new Platform();
+  let progress = mergeProgress(await p.loadCloudSave(), { stagesCompleted: {}, bests: {}, achievements: {}, daysPlayed: [], tutorialsDone: [] });
+  // Another device saves a better stage-02 in between.
+  stored = await zipOf({ v: 1, progress: { stagesCompleted: { 'stage-01': 900, 'stage-02': 700 }, bests: { journey: 900 }, achievements: { evergreen: 5 }, daysPlayed: ['2026-10-01'], tutorialsDone: ['springs'] } });
+  etag = '"other"';
+  const merged = new Promise((resolve) => {
+    p.onConflict = (remote) => { progress = mergeProgress(remote, progress); resolve(); };
+  });
+  progress.stagesCompleted['stage-01'] = 1200;
+  progress.bests.journey = 1200;
+  p.queueCloudSave(progress);
+  await p.flushCloud();
+  await merged;
+  assert.equal(globalThis.StarHermit.saveConflicted(), false, 'reload cleared the conflict');
+  assert.deepEqual(progress.stagesCompleted, { 'stage-01': 1200, 'stage-02': 700 }, 'both devices kept');
+  assert.equal(progress.bests.journey, 1200);
+  assert.deepEqual(progress.tutorialsDone, ['springs']);
+  assert.equal(progress.achievements.evergreen, 5);
+  p.queueCloudSave(progress);
+  await p.flushCloud();
+  assert.equal(puts.at(-1), '"other"', 'the merge is written on top of the version it was based on');
+  assert.equal(p.syncState, 'synced');
+});
+
+test('mergeProgress keeps the better side of every field', async () => {
+  const { mergeProgress } = await import('../src/session.js');
+  const m = mergeProgress(
+    { stagesCompleted: { a: 5, b: 9 }, bests: { daily: 3 }, achievements: { x: 20 }, daysPlayed: ['d2'], tutorialsDone: ['t1'] },
+    { stagesCompleted: { a: 7 }, bests: { daily: 1, practice: 4 }, achievements: { x: 10, y: 30 }, daysPlayed: ['d1', 'd2'], tutorialsDone: ['t2'] });
+  assert.deepEqual(m, { stagesCompleted: { a: 7, b: 9 }, bests: { daily: 3, practice: 4 }, achievements: { x: 10, y: 30 }, daysPlayed: ['d1', 'd2'], tutorialsDone: ['t1', 't2'] });
+  assert.deepEqual(mergeProgress(null, null), { stagesCompleted: {}, bests: {}, achievements: {}, daysPlayed: [], tutorialsDone: [] });
 });

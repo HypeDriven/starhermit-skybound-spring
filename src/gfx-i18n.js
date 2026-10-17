@@ -1,6 +1,7 @@
 /**
  * Skybound Spring — localized strings for the Graphics settings section.
- * The rest of the game is English-only; this panel follows navigator.language.
+ * Follows the game language (i18n.js / the shared Language setting); ui.js
+ * passes currentLang() and rebuilds the panel on a language change.
  */
 
 const EN = {

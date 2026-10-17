@@ -1,7 +1,7 @@
 /**
  * Skybound Spring — localized strings for the StarHermit account controls
- * (sign-in, invite link, sign-out notice, leaderboard line). Locale follows navigator.language
- * through the Graphics panel's picker.
+ * (sign-in, invite link, sign-out notice, leaderboard line). ui.js passes the game
+ * language (i18n.js currentLang()) and refreshes these on a language change.
  */
 import { pickLocale } from './gfx-i18n.js';
 

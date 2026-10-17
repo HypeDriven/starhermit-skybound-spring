@@ -190,6 +190,35 @@ export function loadProgress() {
 }
 export function saveProgress(p) { saveLocal('progress', p); }
 
+/**
+ * Merge two progress docs without dropping either side: cleared stages and
+ * per-mode bests keep the higher score, achievements keep the earliest unlock
+ * time, played days and finished lessons are unioned. Either side may be null.
+ */
+export function mergeProgress(a, b) {
+  const doc = (p) => (p && typeof p === 'object' ? p : {});
+  const obj = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const A = doc(a), B = doc(b);
+  const maxMap = (x, y) => {
+    const out = { ...obj(x) };
+    for (const [k, v] of Object.entries(obj(y))) if (!(Number(out[k]) >= Number(v))) out[k] = v;
+    return out;
+  };
+  const achievements = { ...obj(A.achievements) };
+  for (const [k, v] of Object.entries(obj(B.achievements))) {
+    if (!achievements[k] || (v && Number(v) < Number(achievements[k]))) achievements[k] = v;
+  }
+  return {
+    ...A, ...B,
+    stagesCompleted: maxMap(A.stagesCompleted, B.stagesCompleted),
+    bests: maxMap(A.bests, B.bests),
+    achievements,
+    daysPlayed: [...new Set([...arr(A.daysPlayed), ...arr(B.daysPlayed)])].sort(),
+    tutorialsDone: [...new Set([...arr(A.tutorialsDone), ...arr(B.tutorialsDone)])],
+  };
+}
+
 export function recordResult(progress, mode, id, score, terminal) {
   const completed = terminal && terminal.reason === 'goal-reached';
   if (mode === 'journey') {

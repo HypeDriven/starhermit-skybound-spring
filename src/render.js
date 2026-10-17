@@ -1103,19 +1103,20 @@ export class GameRenderer {
   }
 
   /** Concise navigable text mirror of the board for screen readers. */
-  static boardMirror(state) {
+  /** Screen-reader text of the board; `t` translates the English phrases (ui.js passes i18n's T). */
+  static boardMirror(state, t = (k, v) => k.replace(/\{(\w+)\}/g, (m, n) => (v && n in v ? v[n] : m))) {
     if (!state) return '';
-    if (state.terminal) return `Run over: ${state.terminal.reason}. Altitude ${state.score.altitude}.`;
+    if (state.terminal) return t('Run over: {reason}. Altitude {alt}.', { reason: state.terminal.reason, alt: state.score.altitude });
     const above = state.platforms
       .filter(p => p.alive && p.y > state.player.y + 20 && p.y < state.player.y + 400)
       .sort((a, b) => a.y - b.y)
       .slice(0, 3)
       .map(p => {
-        const side = p.x < state.player.x - 30 ? 'left' : p.x > state.player.x + 30 ? 'right' : 'above';
+        const side = p.x < state.player.x - 30 ? t('{what} left', {}) : p.x > state.player.x + 30 ? t('{what} right', {}) : t('{what} above', {});
         const names = { bud: 'leaf pad', drift: 'moving leaf', crumb: 'brittle petal', spring: 'spring blossom', wisp: 'wisp pad', thorn: 'THORN hazard' };
-        return `${names[p.type] || p.type} ${side}`;
+        return side.replace('{what}', names[p.type] ? t(names[p.type]) : p.type);
       });
-    return `Altitude ${state.score.altitude}, chain ${state.chain}. Next: ${above.join(', ') || 'none in range'}.`;
+    return t('Altitude {alt}, chain {chain}. Next: {next}.', { alt: state.score.altitude, chain: state.chain, next: above.join(', ') || t('none in range') });
   }
 
   dispose() {

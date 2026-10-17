@@ -6,14 +6,24 @@
 import * as R from './rules.js';
 import * as C from './content.js';
 import { GameRenderer } from './render.js';
-import { UI } from './ui.js';
+import { UI, stageName } from './ui.js';
+import { T } from './i18n.js';
 import { AudioSys } from './audio.js';
 import { Platform } from './platform.js';
 import { DEFAULT_GRAPHICS } from './gfx.js';
 import {
   RunSession, Analytics, loadLocal, saveLocal, loadProgress, saveProgress,
-  recordResult, evaluateAchievements,
+  recordResult, evaluateAchievements, mergeProgress,
 } from './session.js';
+
+// Player-facing name of each state-machine phase (Status card in the actions rail).
+const STATE_LABELS = {
+  boot: 'Loading', title: 'Title screen', preparing: 'Preparing the run', countdown: 'Countdown',
+  active: 'Climbing', paused: 'Paused', resolving: 'Scoring the run', results: 'Results',
+};
+
+/** Run labels are thunks so the HUD and pause screen follow a language change. */
+const labelOf = (meta) => (typeof meta.label === 'function' ? meta.label() : meta.label);
 
 const DEFAULT_SETTINGS = {
   music: 0.5, effects: 0.7, ambience: 0.4, muted: false, muteWhenHidden: true,
@@ -62,13 +72,15 @@ class Game {
 
   setState(next, reason) {
     this.state = next;
-    this.ui.setStatus(`${next} — ${reason}`);
+    this.stateReason = reason; // kept for debugging; the Status card shows the phase name
+    this.ui.setStatus(STATE_LABELS[next] || next);
   }
 
   async start() {
     this.setState('boot', 'initial load');
     // Progressive load: rules/UI are already here (bundled); scenic init next.
-    this.ui.screens.innerHTML = '<div class="screen open"><div class="panel"><h1>Skybound Spring</h1><p>Loading the garden…</p><progress></progress></div></div>';
+    this.ui.screens.innerHTML = '<div class="screen open"><div class="panel"><h1>Skybound Spring</h1><p></p><progress></progress></div></div>';
+    this.ui.screens.querySelector('p').textContent = T('Loading the garden…');
 
     const host = document.getElementById('scene-host');
     this.renderer = new GameRenderer(host, {
@@ -76,10 +88,10 @@ class Game {
       onContextLost: () => {
         // Preserve the session; show a recoverable message.
         if (this.state === 'active') this.pause('webgl context lost');
-        this.ui.announceError('Graphics context lost — your run is paused and safe. Restoring…');
+        this.ui.announceError(T('Graphics context lost — your run is paused and safe. Restoring…'));
       },
       onContextRestored: () => {
-        this.ui.announce('Graphics restored.');
+        this.ui.announce(T('Graphics restored.'));
       },
     });
     if (!this.renderer.ok) {
@@ -96,15 +108,17 @@ class Game {
     this.bindInput();
 
     if (this.platform.hosted) {
-      // Remote progress wins on conflict; localStorage stays the offline cache.
+      // Cloud and local progress merge (best of each); localStorage stays the offline cache.
       this.platform.fetchProfile().then(() => {
-        this.ui.setStatus(`Online as ${this.platform.nickname} — cloud save active.`);
+        this.ui.setStatus('Online as {name} — cloud save active.', { name: this.platform.nickname });
       });
+      // Another device saved first (conditional write refused): reload the cloud
+      // doc, merge it with this device's progress and save the merge.
+      this.platform.onConflict = (remoteProgress) => this.adoptRemote(remoteProgress, true);
       const remote = await this.platform.loadCloudSave();
       if (remote) {
-        this.progress = remote;
-        saveProgress(this.progress);
-        this.ui.announce('Cloud progress loaded.');
+        this.adoptRemote(remote, false);
+        this.ui.announce(T('Cloud progress loaded.'));
       }
       // Platform settings win over local ones; then the player's key bindings.
       const prefs = await this.platform.loadSettings();
@@ -121,6 +135,21 @@ class Game {
     }
     this.toTitle('boot complete');
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /**
+   * Merge a cloud progress doc into this device's progress (cleared stages and
+   * bests keep the higher score, achievements/days/lessons are unioned), store
+   * it, and upload the merge when it adds anything the cloud lacks.
+   */
+  adoptRemote(remote, afterConflict) {
+    const merged = mergeProgress(remote, this.progress);
+    const cloudBehind = JSON.stringify(mergeProgress(remote, null)) !== JSON.stringify(merged);
+    for (const k of Object.keys(this.progress)) delete this.progress[k];
+    Object.assign(this.progress, merged);
+    saveProgress(this.progress);
+    if ((cloudBehind || afterConflict) && !this.platform.saveConflicted()) this.platform.queueCloudSave(this.progress);
+    if (this.state === 'title') this.ui.showTitle(this.titleData());
   }
 
   /** Persist + apply the current settings locally (no platform mirror). */
@@ -144,7 +173,11 @@ class Game {
   compatPanel() {
     const div = document.createElement('div');
     div.className = 'panel';
-    div.innerHTML = '<h1>Compatibility</h1><p>Skybound Spring needs WebGL. Your progress and settings are preserved in this browser; the game is unplayable without 3D.</p>';
+    const h = document.createElement('h1');
+    h.textContent = T('Compatibility');
+    const p = document.createElement('p');
+    p.textContent = T('Skybound Spring needs WebGL. Your progress and settings are preserved in this browser; the game is unplayable without 3D.');
+    div.append(h, p);
     return div;
   }
 
@@ -163,12 +196,7 @@ class Game {
     this.replayPlayback = null;
     this.ui.updateHud(null);
     this.ui.hideTutorialOverlay();
-    this.ui.showTitle({
-      progress: this.progress, daily: C.dailyConfig(),
-      name: this.platform.hosted ? this.platform.nickname : null,
-      canSignIn: this.platform.canSignIn(),
-      inviteLink: this.platform.inviteLink(),
-    });
+    this.ui.showTitle(this.titleData());
     this.ui.setActions([
       ['Play', () => this.actions.quickPlay(), true],
       ['Journey', () => this.actions.openJourney()],
@@ -176,10 +204,23 @@ class Game {
     ]);
   }
 
+  titleData() {
+    return {
+      progress: this.progress, daily: C.dailyConfig(),
+      name: this.platform.hosted ? this.platform.nickname : null,
+      canSignIn: this.platform.canSignIn(),
+      inviteLink: this.platform.inviteLink(),
+    };
+  }
+
   goalText(cfg, label) {
-    if (!cfg.goal || cfg.goal.type === 'none') return `${label}: climb as high as you can.`;
-    if (cfg.goal.type === 'altitude') return `${label}: reach ${cfg.goal.target}m altitude${cfg.goal.timeLimitTicks ? ` in ${Math.round(cfg.goal.timeLimitTicks / R.TICK_RATE)}s` : ''}.`;
-    return `${label}: collect ${cfg.goal.target} glow motes.`;
+    if (!cfg.goal || cfg.goal.type === 'none') return T('{label}: climb as high as you can.', { label });
+    if (cfg.goal.type === 'altitude') {
+      return cfg.goal.timeLimitTicks
+        ? T('{label}: reach {n}m altitude in {s}s.', { label, n: cfg.goal.target, s: Math.round(cfg.goal.timeLimitTicks / R.TICK_RATE) })
+        : T('{label}: reach {n}m altitude.', { label, n: cfg.goal.target });
+    }
+    return T('{label}: collect {n} glow motes.', { label, n: cfg.goal.target });
   }
 
   startRun(cfg, meta) {
@@ -260,7 +301,7 @@ class Game {
     this.platform.queueCloudSave(this.progress);
     for (const key of newAch) {
       const def = C.ACHIEVEMENTS.find(a => a.key === key);
-      this.ui.announce(`Achievement unlocked: ${def ? def.name : key}!`);
+      this.ui.announce(T('Achievement unlocked: {name}!', { name: def ? T(def.name) : key }));
       this.platform.unlockAchievement(key);
     }
     this.analytics.track('round-end', { mode: meta.mode, score: score.total, reason: s.terminal.reason });
@@ -287,11 +328,11 @@ class Game {
     if (meta.mode === 'journey' && result.completed && meta.stage) {
       const next = C.stageConfig(Math.min(meta.stage.index + 1, C.JOURNEY_STAGE_COUNT - 1));
       if (meta.stage.index + 1 < C.JOURNEY_STAGE_COUNT) {
-        return { label: `Next: ${next.name}`, fn: () => this.actions.playStage(next) };
+        return { label: () => T('Next: {name}', { name: stageName(next) }), fn: () => this.actions.playStage(next) };
       }
     }
-    if (meta.mode === 'tutorial') return { label: 'More lessons', fn: () => this.actions.openLearn() };
-    return { label: 'Journey', fn: () => this.actions.openJourney() };
+    if (meta.mode === 'tutorial') return { label: () => T('More lessons'), fn: () => this.actions.openLearn() };
+    return { label: () => T('Journey'), fn: () => this.actions.openJourney() };
   }
 
   /* ---------------- tutorial ---------------- */
@@ -302,11 +343,11 @@ class Game {
     };
     this.tutorial = { def, stepIdx: 0, steerTicks: 0, counted: 0 };
     this.startRun(cfg, {
-      mode: 'tutorial', label: `Lesson: ${def.name}`, theme: def.theme,
+      mode: 'tutorial', label: () => T('Lesson: {name}', { name: T(def.name) }), theme: def.theme,
       ranked: false, allowUndo: false, reason: 'tutorial start',
     });
     this.ui.showTutorialOverlay(def.steps[0].text, 0, def.steps.length);
-    this.ui.announce(def.steps[0].text);
+    this.ui.announce(T(def.steps[0].text));
   }
 
   tutorialTick() {
@@ -333,12 +374,12 @@ class Game {
           this.platform.queueCloudSave(this.progress);
         }
         this.ui.hideTutorialOverlay();
-        this.ui.announce('Lesson complete! Keep climbing to finish the run.');
+        this.ui.announce(T('Lesson complete! Keep climbing to finish the run.'));
         this.tutorial = null;
         return;
       }
       this.ui.showTutorialOverlay(t.def.steps[t.stepIdx].text, t.stepIdx, t.def.steps.length);
-      this.ui.announce(t.def.steps[t.stepIdx].text);
+      this.ui.announce(T(t.def.steps[t.stepIdx].text));
     }
   }
 
@@ -350,7 +391,7 @@ class Game {
       switch (e.type) {
         case 'land':
           this.audio.play('bounce');
-          if (e.chain > 0 && e.chain % 8 === 0) { this.audio.play('combo'); this.ui.announce(`Chain ×${e.chain}`); }
+          if (e.chain > 0 && e.chain % 8 === 0) { this.audio.play('combo'); this.ui.announce(T('Chain ×{n}', { n: e.chain })); }
           break;
         case 'spring': this.audio.play('spring'); break;
         case 'token': this.audio.play('token'); break;
@@ -470,7 +511,7 @@ class Game {
         const away = (Date.now() - this.hiddenAt) / 1000;
         this.hiddenAt = null;
         if (away > 5) {
-          this.ui.showAwaySummary(away, `Altitude reached: ${this.session ? this.session.state.score.altitude : 0}m.`);
+          this.ui.showAwaySummary(away, this.session ? this.session.state.score.altitude : 0);
         }
       }
     }
@@ -512,7 +553,7 @@ class Game {
 
       this.tutorialTick();
       this.audio.setIntensity(Math.min(1, this.session.state.score.altitude / 1500));
-      this.ui.updateHud(this.session.state, this.goalText(this.runMeta.cfg, this.runMeta.label));
+      this.ui.updateHud(this.session.state, () => this.goalText(this.runMeta.cfg, labelOf(this.runMeta)));
 
       if (this.session.terminal) {
         this.finishRun();
@@ -554,13 +595,13 @@ class Game {
         this.startRun({
           seed: stage.seed, difficulty: stage.difficulty, goal: stage.goal, mechanics: stage.mechanics,
         }, {
-          mode: 'journey', label: stage.name, theme: stage.theme, ranked: false,
+          mode: 'journey', label: () => stageName(stage), theme: stage.theme, ranked: false,
           allowUndo: false, stage, stageId: stage.id, par: stage.parSeconds,
           reason: 'journey stage selected',
         });
         if (stage.tutorial && !this.progress.tutorialsDone.includes(stage.tutorial)) {
           const tut = C.TUTORIALS.find(t => t.id === stage.tutorial);
-          if (tut) this.ui.announce('Tip: a lesson for this mechanic is available in Learn.');
+          if (tut) this.ui.announce(T('Tip: a lesson for this mechanic is available in Learn.'));
         }
       },
       playDaily: () => {
@@ -569,13 +610,13 @@ class Game {
           seed: daily.seed, difficulty: daily.difficulty,
           goal: { type: 'none', target: 0 }, mechanics: ['bud', 'drift', 'crumb', 'spring', 'wisp', 'thorn'],
         }, {
-          mode: 'daily', label: `Daily ${daily.date || 'challenge'}`, theme: daily.theme,
+          mode: 'daily', label: () => (daily.date ? T('Daily {date}', { date: daily.date }) : T('Daily challenge')), theme: daily.theme,
           ranked: false, allowUndo: false, reason: 'daily start',
         });
       },
       playPractice: (tier, seed) => {
         this.startRun({ seed, difficulty: tier, goal: { type: 'none', target: 0 } }, {
-          mode: 'practice', label: `Practice (${R.DIFFICULTY[tier].label})`,
+          mode: 'practice', label: () => T('Practice ({tier})', { tier: T(R.DIFFICULTY[tier].label) }),
           theme: C.THEMES[seed % C.THEMES.length].key,
           ranked: false, allowUndo: true, reason: 'practice start',
         });
@@ -585,7 +626,7 @@ class Game {
           seed: ch.seed, difficulty: ch.difficulty, goal: ch.goal,
           moveLimitTicks: ch.moveLimitTicks || 0,
         }, {
-          mode: 'challenge', label: `Challenge: ${ch.name}`, theme: ch.theme,
+          mode: 'challenge', label: () => T('Challenge: {name}', { name: T(ch.name) }), theme: ch.theme,
           ranked: false, allowUndo: false, reason: 'challenge start',
         });
       },
@@ -607,8 +648,8 @@ class Game {
         const env = this.session.buildEnvelope();
         const settled = RunSession.replaySettle(env);
         this.ui.announce(settled.matchesTerminal
-          ? `Replay verified: identical end state, score ${settled.score.total}.`
-          : 'Replay mismatch — local only.');
+          ? T('Replay verified: identical end state, score {n}.', { n: settled.score.total })
+          : T('Replay mismatch — local only.'));
         this.ui.closeScreen();
         this.setState('active', 'replay playback');
         const cfg = { ...this.runMeta.cfg };
@@ -620,7 +661,7 @@ class Game {
       },
       undo: () => {
         if (this.session && this.session.undo()) {
-          this.ui.announce('Undone to last landing.');
+          this.ui.announce(T('Undone to last landing.'));
         }
       },
       steerStart: (dir) => { this.touchDir = dir; },
@@ -642,7 +683,7 @@ class Game {
         this.progress.tutorialsDone = [];
         saveProgress(this.progress);
         this.platform.queueCloudSave(this.progress);
-        this.ui.announce('Tutorials reset — find them under Learn.');
+        this.ui.announce(T('Tutorials reset — find them under Learn.'));
       },
     };
   }
@@ -676,6 +717,6 @@ window.__game = game;
 game.start().catch((e) => {
   console.error(e);
   document.getElementById('app').innerHTML =
-    '<div class="screen open"><div class="panel"><h1>Skybound Spring</h1><p>Failed to start: ' +
-    String(e && e.message || e) + '</p></div></div>';
+    '<div class="screen open"><div class="panel"><h1>Skybound Spring</h1><p></p></div></div>';
+  document.querySelector('#app .panel p').textContent = T('Failed to start: {error}', { error: String(e && e.message || e) });
 });

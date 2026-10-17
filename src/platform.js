@@ -9,6 +9,7 @@
  * own server routes (no time sync, submissions or server boards). Tokens
  * are never persisted.
  */
+import { T } from './i18n.js';
 
 // Keyboard actions; mirrors the control.* lines in starhermit.txt.
 export const DEFAULT_CONTROLS = {
@@ -36,6 +37,7 @@ export class Platform {
     this.syncState = 'offline'; // offline | local | saving | synced | error
     this.onSync = null;      // UI hook: (state) => void
     this.onSignedOut = null; // UI hook when renewal is refused
+    this.onConflict = null;  // (remoteProgress|null) => void after another device saved first
     this.controls = cloneControls(DEFAULT_CONTROLS);
     // Guest profile lives only in memory + localStorage, never credentials.
     this.playerId = null;
@@ -53,6 +55,9 @@ export class Platform {
     if (sh) {
       if (!sh.token) sh.init();
       sh.on('saved', (ok) => this._setSync(ok ? 'synced' : 'error'));
+      // Another device wrote the save since our last load: the SDK refused this
+      // write and blocks the next ones until a reload. Reload and let the game merge.
+      sh.on('saveconflict', () => this._resolveConflict());
       sh.on('auth', (a) => {
         const was = this.hosted;
         this._syncFromSdk();
@@ -67,7 +72,7 @@ export class Platform {
     }
     if (this.hosted) {
       this.playerId = this.userId;
-      this.nickname = 'Player ' + this.userId.slice(0, 6);
+      this.nickname = T('Player {id}', { id: this.userId.slice(0, 6) });
       this.playerName = this.nickname;
       this.syncState = 'local';
     }
@@ -111,9 +116,9 @@ export class Platform {
   /** Resolve any userId to a display nickname (cached by the SDK). */
   async profileName(userId) {
     const id = String(userId || '');
-    if (!id) return 'Player';
+    if (!id) return T('Player');
     const p = this.hosted ? await SH().profile(id).catch(() => null) : null;
-    return p ? p.displayName.slice(0, 32) : 'Player ' + id.slice(0, 6);
+    return p ? p.displayName.slice(0, 32) : T('Player {id}', { id: id.slice(0, 6) });
   }
 
   /* ---------------- cloud save (mirror of the progress doc) ---------------- */
@@ -133,12 +138,25 @@ export class Platform {
     SH().saveJSON({ v: 1, savedAt: Date.now(), progress });
   }
 
+  /** True while a lost conditional write blocks cloud saves (until the next load). */
+  saveConflicted() { const sh = SH(); return !!(sh && typeof sh.saveConflicted === 'function' && sh.saveConflicted()); }
+
+  async _resolveConflict() {
+    if (!this.hosted) return;
+    this._setSync('saving');
+    const doc = await SH().loadJSON().catch(() => null);
+    const sh = SH();
+    // Still conflicted or unreadable: keep local progress and leave the cloud copy alone.
+    if (this.saveConflicted() || (sh.saveLoadFailed && sh.saveLoadFailed())) { this._setSync('error'); return; }
+    if (this.onConflict) this.onConflict(doc && doc.progress ? doc.progress : null);
+  }
+
   /** Flush any pending cloud save (pagehide / visibilitychange). */
   flushCloud() {
     return this.hosted ? SH().flushSave(true) : Promise.resolve(false);
   }
 
-  /** Load the remote progress doc (remote wins on conflict; none = null). */
+  /** Load the remote progress doc (the game merges it with local progress; none = null). */
   async loadCloudSave() {
     if (!this.hosted) return null;
     this._setSync('saving');

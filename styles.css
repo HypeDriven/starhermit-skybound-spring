@@ -9,6 +9,9 @@
   --focus: #ffb020;
   --radius: 12px;
   --gap: 8px;
+  /* tokens the shared game-options.js controls (Sound, Language, Report) read */
+  --text: var(--ink);
+  --panel2: #ffffff;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -139,6 +142,9 @@ html.left-handed .thumb-tray { justify-content: flex-start; }
 .game-title { font-size: 2.4rem; margin: 0; color: var(--accent-strong); }
 .tagline { color: var(--ink-soft); }
 .row { display: flex; align-items: center; flex-wrap: wrap; margin-block: 4px; }
+/* checkbox toggles: long translated labels wrap beside the box, not under it */
+label.row:has(> input[type="checkbox"]:first-child) { flex-wrap: nowrap; align-items: flex-start; gap: 4px; }
+label.row > input[type="checkbox"]:first-child { flex: none; margin-block-start: .2em; }
 .gap { gap: var(--gap); }
 .muted { color: var(--ink-soft); }
 .small { font-size: 0.85rem; }
