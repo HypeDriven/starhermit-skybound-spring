@@ -205,6 +205,7 @@ async function graphicsFlow(page, name) {
   await page.waitForFunction(() => document.querySelector('#scene-host canvas')?.dataset.gfxBloom === 'off');
   a = await attr();
   if (/bloom/.test(a.summary)) throw new Error(`${name}: summary still lists bloom: ${a.summary}`);
+  if (!/ · Level 0 · /.test(a.summary)) throw new Error(`${name}: summary lacks the hardware level: ${a.summary}`);
   await page.waitForTimeout(300); // let a few High frames render (console must stay clean)
   ok(`${name}: Graphics preset Low → High and Bloom override applied live ("${a.summary}")`);
 

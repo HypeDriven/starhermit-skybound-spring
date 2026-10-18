@@ -15,7 +15,7 @@ import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { WORLD_WIDTH, PLAYER_RADIUS } from './rules.js';
 import { CVD_PALETTES } from './content.js';
-import { detectPreset, resolve, describe, SHADOW_MAP, BURST_CAP, CATEGORIES } from './gfx.js';
+import { detectLevel, presetForLevel, resolve, describe, SHADOW_MAP, CATEGORIES } from './gfx.js';
 
 /** Exported framing constants (no magic offsets elsewhere). */
 export const FRAMING = {
@@ -40,10 +40,13 @@ const LEAF_SPAN = 2600;    // vertical wrap span for stalk leaves
 
 /* ---------- procedural textures ---------- */
 
-function canvasTex(w, h, draw, srgb = true) {
+// `w`×`h` is the size the art is drawn for; `k` (the preset's texture budget) scales the canvas.
+function canvasTex(w, h, draw, srgb = true, k = 1) {
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d');
+  if (k !== 1) g.scale(k, k);
+  draw(g, w, h);
   const tex = new THREE.CanvasTexture(c);
   if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -62,7 +65,7 @@ function softDotTexture() {
 }
 
 /** Leaf veins: near-white base (the palette colour stays dominant), a lighter midrib and darker veins. */
-function leafVeinTexture() {
+function leafVeinTexture(k = 1) {
   return canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = '#f2f2f2';
     g.fillRect(0, 0, w, h);
@@ -97,11 +100,11 @@ function leafVeinTexture() {
     g.strokeStyle = 'rgba(255,255,255,0.95)';
     g.lineWidth = 5;
     g.beginPath(); g.moveTo(8, h / 2); g.lineTo(w - 8, h / 2); g.stroke();
-  });
+  }, true, k);
 }
 
 /** Petal streaks for the brittle pads (reads as dry, papery). */
-function petalTexture() {
+function petalTexture(k = 1) {
   return canvasTex(128, 128, (g, w, h) => {
     g.fillStyle = '#f4f0ea';
     g.fillRect(0, 0, w, h);
@@ -113,7 +116,7 @@ function petalTexture() {
     }
     g.fillStyle = 'rgba(60,40,20,0.35)';
     for (let i = 0; i < 6; i++) g.fillRect(20 + i * 17, 30 + (i * 37) % 60, 3, 3);
-  });
+  }, true, k);
 }
 
 /* ---------- procedural geometry ---------- */
@@ -129,9 +132,14 @@ function planarUV(geo, w, d) {
   return geo;
 }
 
-function leafGeometry(w, d, thick) {
+// `k`: the preset's tessellation share of the authored segment counts.
+function seg(n, k, min) {
+  return Math.max(min, Math.round(n * k));
+}
+
+function leafGeometry(w, d, thick, k = 1) {
   // Lily-pad lens: flat top at the landing surface (y = 0), shallow belly below.
-  const geo = new THREE.SphereGeometry(1, 28, 12);
+  const geo = new THREE.SphereGeometry(1, seg(28, k, 20), seg(12, k, 6));
   geo.scale(w / 2, thick, d / 2);
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -155,14 +163,14 @@ function petalGeometry(w, h) {
   geo.translate(0, -8, 0);
   return planarUV(geo, w, h * 0.7);
 }
-function blossomGeometry(r) {
+function blossomGeometry(r, k = 1) {
   // Spring blossom: central dome + petal ring.
   const group = [];
-  const dome = new THREE.SphereGeometry(r * 0.42, 16, 10);
+  const dome = new THREE.SphereGeometry(r * 0.42, seg(16, k, 8), seg(10, k, 5));
   dome.translate(0, 6, 0);
   group.push(dome);
   for (let i = 0; i < 5; i++) {
-    const petal = new THREE.SphereGeometry(r * 0.3, 12, 8);
+    const petal = new THREE.SphereGeometry(r * 0.3, seg(12, k, 6), seg(8, k, 4));
     petal.scale(1.4, 0.35, 0.9);
     const a = (i / 5) * Math.PI * 2;
     petal.rotateY(-a);
@@ -205,9 +213,9 @@ function mergeGeos(geos) {
 }
 
 /** The sprout-hopper: an original little seedling hero. */
-function makeHopperMesh(mat, leafMat) {
+function makeHopperMesh(mat, leafMat, k = 1) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(PLAYER_RADIUS, 24, 18), mat);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(PLAYER_RADIUS, seg(24, k, 12), seg(18, k, 9)), mat);
   body.scale.set(1, 1.15, 0.9);
   g.add(body);
   const leaf = new THREE.Mesh(new THREE.ConeGeometry(7, 16, 10), leafMat);
@@ -307,6 +315,28 @@ function isMobileDevice() {
   return coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 }
 
+// Run a post pass at a share of the frame: EffectComposer.addPass/setSize hand every pass the full frame
+// size, so the pass's own setSize applies the budget's scale (half-resolution bloom below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
+// A lit material at the budget's shading model: Lambert on Low, Standard on Balanced (clearcoat and sheen
+// dropped), Physical where asked for on High/Ultra.
+function litMaterial(tier, opts, physical = false) {
+  const o = { ...opts };
+  if (tier === 'lambert') {
+    for (const k of ['roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'sheen', 'sheenColor']) delete o[k];
+    return new THREE.MeshLambertMaterial(o);
+  }
+  if (physical && tier === 'physical') return new THREE.MeshPhysicalMaterial(o);
+  for (const k of ['clearcoat', 'clearcoatRoughness', 'sheen', 'sheenColor']) delete o[k];
+  return new THREE.MeshStandardMaterial(o);
+}
+
 /* ---------- renderer ---------- */
 
 export class GameRenderer {
@@ -349,7 +379,16 @@ export class GameRenderer {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.gpu = gpuName(this.renderer);
-    this.detected = detectPreset(this.gpu, isMobileDevice());
+    // StarHermit hardware level (gpu-level.js): renderer string + device facts (cores, memory, screen).
+    let sys = { mobile: isMobileDevice() };
+    try {
+      const G = globalThis.StarHermitGpu;
+      if (G) { const d = G.detectSystem(); sys = { ...d, mobile: sys.mobile || d.mobile, gpu: undefined }; }
+    } catch {
+      /* defaults */
+    }
+    this.gpuLevel = detectLevel(this.gpu, sys);
+    this.detected = presetForLevel(this.gpuLevel);
     this._reduceQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 
     this.scene = new THREE.Scene();
@@ -393,23 +432,15 @@ export class GameRenderer {
 
     // Shared assets
     this.dotTex = softDotTexture();
-    this.veinTex = leafVeinTexture();
-    this.petalTex = petalTexture();
+    this.veinTex = null;  // surface textures at the preset's budget size (setGraphics)
+    this.petalTex = null;
     this.geoToken = new THREE.OctahedronGeometry(9);
     this.geoStalk = new THREE.CylinderGeometry(0.42, 0.5, 1, 10, 1, true);
     this.geoLeaf = new THREE.SphereGeometry(1, 10, 6);
     this.geoParticle = new THREE.PlaneGeometry(7, 7);
 
-    // Player
-    this.playerMat = new THREE.MeshPhysicalMaterial({ color: 0x8ed06a, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.3, sheen: 0.4, sheenColor: new THREE.Color(0xeaffd0) });
-    this.playerLeafMat = new THREE.MeshStandardMaterial({ color: 0x4f9e4f, roughness: 0.55 });
-    this.player = makeHopperMesh(this.playerMat, this.playerLeafMat);
-    this.scene.add(this.player);
-
-    // Background materials (clouds, stalks, leaves, pollen)
-    this.cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, emissive: 0xffffff, emissiveIntensity: 0.12 });
-    this.stalkMat = new THREE.MeshStandardMaterial({ color: 0x6a8a6a, roughness: 0.9 });
-    this.leafMat = new THREE.MeshStandardMaterial({ color: 0x6a8a6a, roughness: 0.8 });
+    // Player and background materials (clouds, stalks, leaves) are built per preset in setGraphics.
+    this.player = null;
     this.pollenMat = new THREE.PointsMaterial({ color: 0xfff6d8, size: 7, map: this.dotTex, transparent: true, opacity: 0.75, depthWrite: false, sizeAttenuation: true });
     this.clouds = null;
     this.stalks = null;
@@ -503,8 +534,11 @@ export class GameRenderer {
     if (key === this._gfxKey) return; // unrelated settings changed
     this._gfxKey = key;
     const prev = this.q;
-    const g = resolve(saved || {}, this.detected);
+    const g = resolve(saved || {}, this.detected, this.gpuLevel);
     this.q = g;
+    const b = g.budget;
+    const budgetChanged = !prev || prev.preset !== g.preset;
+    if (budgetChanged) this._applyBudgetAssets(b);
 
     // Shadows: map size + enable; lit materials recompile for the new state.
     const size = SHADOW_MAP[g.shadows];
@@ -520,15 +554,17 @@ export class GameRenderer {
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
     });
 
-    if (!prev || prev.detail !== g.detail) {
-      // Surface detail swaps pad materials/geometry and background density.
+    if (budgetChanged || prev.detail !== g.detail) {
+      // Surface detail and the preset's budget swap pad materials/geometry and background density.
       this._mats = {};
       this._geoCache = {};
       for (const v of this.padViews.values()) this.scene.remove(v);
       this.padViews.clear();
-      this.playerMat.clearcoat = g.detail === 'detailed' ? 0.6 : 0;
-      this.playerMat.sheen = g.detail === 'detailed' ? 0.4 : 0;
-      this.playerMat.needsUpdate = true;
+      if (this.playerMat.isMeshPhysicalMaterial) {
+        this.playerMat.clearcoat = g.detail === 'detailed' ? 0.6 : 0;
+        this.playerMat.sheen = g.detail === 'detailed' ? 0.4 : 0;
+        this.playerMat.needsUpdate = true;
+      }
       for (const v of this.tokenViews.values()) this.scene.remove(v);
       this.tokenViews.clear();
       this.buildEnvironment();
@@ -554,11 +590,41 @@ export class GameRenderer {
     for (const cat of Object.keys(CATEGORIES)) canvas.dataset['gfx' + cat[0].toUpperCase() + cat.slice(1)] = g[cat];
   }
 
+  /** Rebuild the preset-dependent assets: hopper and background materials/tessellation, surface textures. */
+  _applyBudgetAssets(b) {
+    const tex = b.texture / 256;
+    if (this._texK !== tex) {
+      this.veinTex?.dispose();
+      this.petalTex?.dispose();
+      this.veinTex = leafVeinTexture(tex);
+      this.petalTex = petalTexture(tex);
+      this._texK = tex;
+    }
+    const pose = this.player && { p: this.player.position.clone(), r: this.player.rotation.clone(), s: this.player.scale.clone() };
+    if (this.player) {
+      this.scene.remove(this.player);
+      this.player.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+      this.playerMat.dispose();
+      this.playerLeafMat.dispose();
+    }
+    this.playerMat = litMaterial(b.material, { color: 0x8ed06a, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.3, sheen: 0.4, sheenColor: new THREE.Color(0xeaffd0) }, true);
+    this.playerLeafMat = litMaterial(b.material, { color: 0x4f9e4f, roughness: 0.55 });
+    this.player = makeHopperMesh(this.playerMat, this.playerLeafMat, b.segments);
+    if (pose) { this.player.position.copy(pose.p); this.player.rotation.copy(pose.r); this.player.scale.copy(pose.s); }
+    this.scene.add(this.player);
+    for (const k of ['cloudMat', 'stalkMat', 'leafMat']) this[k]?.dispose();
+    this.cloudMat = litMaterial(b.material, { color: 0xffffff, roughness: 1, emissive: 0xffffff, emissiveIntensity: 0.12 });
+    this.stalkMat = litMaterial(b.material, { color: 0x6a8a6a, roughness: 0.9 });
+    this.leafMat = litMaterial(b.material, { color: 0x6a8a6a, roughness: 0.8 });
+    if (this.theme) this._tintEnv(this.theme);
+  }
+
   /** What the Settings panel shows: GPU, detected preset, resolved tiers, cost, frame rate. */
   graphicsInfo(labels) {
     const px = [Math.round(this.size[0] * this.pixelRatio), Math.round(this.size[1] * this.pixelRatio)];
     return {
       gpu: this.gpu || 'unknown GPU',
+      level: this.gpuLevel,
       detected: this.detected,
       resolved: this.q,
       summary: describe(this.q, px, labels),
@@ -620,7 +686,7 @@ export class GameRenderer {
       composer.addPass(new RenderPass(this.scene, this.camera));
       if (g.bloom === 'on') {
         // High threshold: only emissive motes, sparkles and the sun core bloom.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.4, 1.4));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.4, 1.4), g.budget.bloomRes));
       }
       if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
       composer.addPass(new OutputPass());
@@ -672,6 +738,11 @@ export class GameRenderer {
     this.key.color.setHex(theme.keyLight);
     this.hemi.color.setHex(theme.hemiSky);
     this.hemi.groundColor.setHex(theme.hemiGround);
+    this._tintEnv(theme);
+    this.buildEnvironment();
+  }
+
+  _tintEnv(theme) {
     this.cloudMat.color.setHex(theme.cloud);
     this.cloudMat.emissive.setHex(theme.cloud);
     // Distant stalks: theme foliage pulled toward the sky for atmospheric depth.
@@ -679,7 +750,6 @@ export class GameRenderer {
     this.stalkMat.color.setHex(theme.pad).lerp(fogC, 0.45);
     this.leafMat.color.setHex(theme.padAlt).lerp(fogC, 0.3);
     this.pollenMat.color.setHex(theme.accent).lerp(new THREE.Color(0xffffff), 0.6);
-    this.buildEnvironment();
   }
 
   palette() {
@@ -697,7 +767,9 @@ export class GameRenderer {
 
   buildEnvironment() {
     if (!this.theme || !this.q) return;
-    const D = DETAIL[this.q.detail];
+    const D = { ...DETAIL[this.q.detail] };
+    const b = this.q.budget;
+    if (this.q.detail === 'detailed') D.clouds = b.clouds;
     const rng = mulberry(0xc10d5);
     const m = new THREE.Matrix4();
 
@@ -747,7 +819,7 @@ export class GameRenderer {
 
     // Floating pollen (detailed + high particles only).
     this._removeEnv('pollen');
-    const pollenCount = this.q.particles === 'high' ? D.pollen : 0;
+    const pollenCount = this.q.particles === 'high' && D.pollen ? b.pollen : 0;
     if (pollenCount) {
       const pos = new Float32Array(pollenCount * 3);
       this.pollenSeed = [];
@@ -833,14 +905,15 @@ export class GameRenderer {
       const opts = { color: pal[type] || pal.bud, roughness: 0.6 };
       if (type === 'wisp') { opts.transparent = true; opts.opacity = 0.7; }
       if (type === 'thorn') { opts.color = pal.thorn; opts.roughness = 0.35; }
+      const tier = this.q.budget.material;
       if (!detailed) {
-        this._mats[key] = new THREE.MeshStandardMaterial(opts);
+        this._mats[key] = litMaterial(tier, opts);
       } else {
         if (type === 'bud' || type === 'drift' || type === 'wisp') opts.map = this.veinTex;
         if (type === 'crumb') { opts.map = this.petalTex; opts.roughness = 0.85; }
         if (type === 'spring') { opts.emissive = pal.spring; opts.emissiveIntensity = 0.18; opts.sheen = 0.6; opts.sheenColor = new THREE.Color(0xffffff); }
         if (type !== 'crumb') { opts.clearcoat = type === 'thorn' ? 0.8 : 0.55; opts.clearcoatRoughness = 0.35; }
-        this._mats[key] = new THREE.MeshPhysicalMaterial(opts);
+        this._mats[key] = litMaterial(tier, opts, true);
       }
     }
     return this._mats[key];
@@ -855,11 +928,11 @@ export class GameRenderer {
       if (type === 'crumb') {
         this._geoCache[key] = petalGeometry(qw, qw * 0.5);
       } else if (type === 'spring') {
-        this._geoCache[key] = blossomGeometry(qw * 0.55);
+        this._geoCache[key] = blossomGeometry(qw * 0.55, this.q.budget.segments);
       } else if (type === 'thorn') {
         this._geoCache[key] = thornGeometry(qw);
       } else {
-        this._geoCache[key] = leafGeometry(qw, Math.min(46, qw * 0.5), 12);
+        this._geoCache[key] = leafGeometry(qw, Math.min(46, qw * 0.5), 12, this.q.budget.segments);
       }
     }
     return this._geoCache[key];
@@ -881,7 +954,7 @@ export class GameRenderer {
     const pal = this.palette();
     const key = 'token:' + this.settings.cvdPalette;
     if (!this._mats[key]) {
-      this._mats[key] = new THREE.MeshStandardMaterial({
+      this._mats[key] = litMaterial(this.q.budget.material, {
         color: pal.token, emissive: pal.token, emissiveIntensity: this.q.bloom === 'on' ? 3 : 1,
         roughness: 0.25, metalness: 0.2,
       });
@@ -952,7 +1025,9 @@ export class GameRenderer {
 
   burst(x, y, color, count, spread = 60) {
     if (this.settings.reducedMotion) return;
-    const n = Math.min(count, BURST_CAP[this.q.particles]);
+    // Sparkles per burst from the preset's budget (scaled with the hardware level; Particles low: half).
+    const b = this.q.budget.burst;
+    const n = Math.min(count, this.q.particles === 'high' ? b : Math.round(b / 2));
     const glow = this.q.bloom === 'on' ? 2.6 : 1; // sparkles bloom when bloom is on
     for (let i = 0; i < n; i++) {
       let pt = this.particlePool.find(p => !p.userData.active);

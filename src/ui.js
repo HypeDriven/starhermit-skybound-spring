@@ -636,7 +636,7 @@ export class UI {
       const note = el('p', { id: 'gfx-post-note', class: 'small gfx-note', text: T.postFailed });
       const fill = () => {
         const i = this.actions.graphicsInfo ? this.actions.graphicsInfo(T.sum) : null;
-        summary.textContent = i ? `${i.gpu} · ${i.summary}` : '';
+        summary.textContent = i ? [i.gpu, i.level != null ? T.level.replace('{n}', i.level) : null, i.summary].filter(Boolean).join(' · ') : '';
         note.hidden = !(i && i.postFailed);
       };
       fill();

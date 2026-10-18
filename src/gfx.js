@@ -1,7 +1,8 @@
 /**
  * Skybound Spring — graphics quality model: presets, per-category overrides,
- * GPU detection and a cost summary. Pure (no three.js) so the Settings panel,
- * the renderer and the unit tests agree on what a setting means.
+ * StarHermit hardware-level detection, per-preset asset/effect budgets and a
+ * cost summary. Pure (no three.js) so the Settings panel, the renderer and
+ * the unit tests agree on what a setting means.
  */
 
 export const PRESETS = ['low', 'balanced', 'high', 'ultra'];
@@ -28,22 +29,66 @@ const TABLE = {
 };
 
 export const SHADOW_MAP = { off: 0, low: 512, medium: 1024, high: 2048 };
-export const BURST_CAP = { low: 12, high: 40 };
 
 export const DEFAULT_GRAPHICS = Object.freeze({ preset: 'auto', render_scale: 1, adaptive: true, show_fps: false });
 
-/**
- * Best preset for this GPU from the unmasked renderer string. Software
- * renderers get Low, discrete GPUs / Apple M-series get High, else Balanced.
- * `mobile` caps the result at Balanced.
+// Auto picks the preset from the StarHermit hardware level (0 = Galaxy S20 / Intel UHD or weaker, 20 = RTX
+// 5090, each level ≈ 1.23× the one below; gpu-level.js → window.StarHermitGpu, a classic script loaded
+// before app.js): Low from 0, Balanced from 4, High from 10, Ultra from 17. Phones, tablets and ≤ 4 GB
+// machines are capped at level 9.
+export const LEVELS = { low: 0, balanced: 4, high: 10, ultra: 17 };
+
+const gpuApi = () => globalThis.StarHermitGpu;
+
+/** Hardware level 0–20 for an unmasked renderer string plus StarHermitGpu.detectSystem() facts. */
+export function detectLevel(gpu, system) {
+  const G = gpuApi();
+  if (!G) return LEVELS.balanced;
+  return G.detectLevel({ webgl: true, webgl2: true, ...(system || {}), gpu: String(gpu || '') });
+}
+
+/** The preset Auto starts from for a hardware level. */
+export function presetForLevel(level) {
+  const G = gpuApi();
+  return G ? G.presetForLevel(level, LEVELS) : PRESETS.filter((p) => LEVELS[p] <= level).pop() || 'low';
+}
+
+/** Best preset for this GPU (the hardware level already caps phones/tablets at Balanced). */
+export function detectPreset(gpu, system) {
+  return presetForLevel(detectLevel(gpu, system));
+}
+
+/*
+ * Per-preset asset and effect budget. Each preset is tuned to hold 60 FPS on the weakest GPU Auto gives
+ * it (Low → level 0, Balanced → 4, High → 10, Ultra → 17; measured with tests/gfx-bench.mjs). Gameplay,
+ * physics and hit areas are identical on every preset — only visuals change.
+ *   material   shading model: 'lambert' (diffuse only), 'standard' (PBR; clearcoat/sheen dropped) or
+ *              'physical' (clearcoat pads and sheen on the hopper and spring blossoms)
+ *   segments   tessellation of the pads, blossoms, hopper and clouds as a share of the authored counts
+ *   texture    leaf-vein / petal texture width in px (authored at 256 / 128)
+ *   clouds     background cloud clusters (instanced; detailed surface detail)
+ *   pollen     floating pollen motes (Particles high), scaled with the level
+ *   burst      sparkle cap per burst (Particles high; low: ⅓), scaled with the level
+ *   bloomRes   bloom resolution as a share of the frame
  */
-export function detectPreset(gpu, mobile = false) {
-  const g = String(gpu || '').toLowerCase();
-  let p = 'balanced';
-  if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/.test(g)) p = 'low';
-  else if (/nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|amd radeon(?!.*graphics)|apple m\d/.test(g)) p = 'high';
-  if (mobile && PRESETS.indexOf(p) > PRESETS.indexOf('balanced')) p = 'balanced';
-  return p;
+export const BUDGETS = {
+  low: { material: 'lambert', segments: 0.5, texture: 128, clouds: 24, pollen: 30, burst: 16, bloomRes: 0.5 },
+  balanced: { material: 'standard', segments: 0.75, texture: 256, clouds: 32, pollen: 50, burst: 28, bloomRes: 0.5 },
+  high: { material: 'physical', segments: 1, texture: 256, clouds: 40, pollen: 70, burst: 40, bloomRes: 0.5 },
+  ultra: { material: 'physical', segments: 1.5, texture: 512, clouds: 56, pollen: 120, burst: 56, bloomRes: 1 },
+};
+export const POLLEN_MAX = 240;
+export const BURST_MAX = 80;
+
+/** A preset's concrete budget for a hardware level (counts scale ≤ 2× within the preset). */
+export function budgetFor(preset, level) {
+  const b = { ...(BUDGETS[preset] || BUDGETS.balanced) };
+  const G = gpuApi(), floor = LEVELS[preset] || 0;
+  const lv = Math.max(Number.isFinite(level) ? level : floor, floor);
+  const k = G ? Math.min(2, G.scaleBudget(1, lv, floor)) : 1;
+  b.pollen = Math.min(POLLEN_MAX, Math.round(b.pollen * k));
+  b.burst = Math.min(BURST_MAX, Math.round(b.burst * k));
+  return b;
 }
 
 /**
@@ -51,7 +96,7 @@ export function detectPreset(gpu, mobile = false) {
  * `saved`: { preset: 'auto'|preset, render_scale, adaptive, show_fps, <category>: tier }.
  * Missing / unknown category values mean "from preset".
  */
-export function resolve(saved, detected) {
+export function resolve(saved, detected, level) {
   const s = saved || {};
   const auto = !PRESETS.includes(s.preset);
   const preset = auto ? (PRESETS.includes(detected) ? detected : 'balanced') : s.preset;
@@ -60,6 +105,8 @@ export function resolve(saved, detected) {
   for (const [cat, tiers] of Object.entries(CATEGORIES)) {
     out[cat] = tiers.includes(s[cat]) ? s[cat] : row[cat];
   }
+  out.level = Number.isFinite(level) ? level : LEVELS[preset];
+  out.budget = budgetFor(preset, out.level);
   out.adaptive = s.adaptive !== false;
   out.showFps = !!s.show_fps;
   // The post chain only runs when an effect needs it; otherwise canvas MSAA is used.

@@ -13,6 +13,7 @@ const EN = {
   fromPreset: 'From preset ({tier})',
   adaptive: 'Adaptive resolution',
   showFps: 'Show frame rate',
+  level: 'Level {n}',
   postFailed: 'Post-processing is unavailable on this device; the game renders without it.',
   cat: {
     shadows: 'Shadows', bloom: 'Bloom', grade: 'Color grade & vignette', antialias: 'Anti-aliasing',
@@ -37,6 +38,7 @@ const ES = {
   fromPreset: 'Según el ajuste ({tier})',
   adaptive: 'Resolución adaptativa',
   showFps: 'Mostrar fotogramas por segundo',
+  level: 'Nivel {n}',
   postFailed: 'El posprocesado no está disponible en este dispositivo; el juego se muestra sin él.',
   cat: {
     shadows: 'Sombras', bloom: 'Resplandor', grade: 'Corrección de color y viñeta', antialias: 'Antialiasing',
@@ -61,6 +63,7 @@ const DE = {
   fromPreset: 'Aus Voreinstellung ({tier})',
   adaptive: 'Adaptive Auflösung',
   showFps: 'Bildrate anzeigen',
+  level: 'Stufe {n}',
   postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; das Spiel wird ohne sie dargestellt.',
   cat: {
     shadows: 'Schatten', bloom: 'Leuchteffekt', grade: 'Farbkorrektur & Vignette', antialias: 'Kantenglättung',
@@ -83,6 +86,7 @@ const FR = {
   fromPreset: 'Selon le préréglage ({tier})',
   adaptive: 'Résolution adaptative',
   showFps: 'Afficher les images par seconde',
+  level: 'Niveau {n}',
   postFailed: 'Le post-traitement n’est pas disponible sur cet appareil ; le jeu s’affiche sans.',
   cat: {
     shadows: 'Ombres', bloom: 'Halo lumineux', grade: 'Étalonnage et vignette', antialias: 'Anticrénelage',
@@ -107,6 +111,7 @@ const PT_BR = {
   fromPreset: 'Do predefinido ({tier})',
   adaptive: 'Resolução adaptativa',
   showFps: 'Mostrar taxa de quadros',
+  level: 'Nível {n}',
   postFailed: 'O pós-processamento não está disponível neste dispositivo; o jogo é exibido sem ele.',
   cat: {
     shadows: 'Sombras', bloom: 'Brilho', grade: 'Correção de cor e vinheta', antialias: 'Suavização',
@@ -129,6 +134,7 @@ const IT = {
   fromPreset: 'Dal preset ({tier})',
   adaptive: 'Risoluzione adattiva',
   showFps: 'Mostra frequenza fotogrammi',
+  level: 'Livello {n}',
   postFailed: 'La post-elaborazione non è disponibile su questo dispositivo; il gioco viene mostrato senza.',
   cat: {
     shadows: 'Ombre', bloom: 'Bagliore', grade: 'Correzione colore e vignettatura', antialias: 'Antialiasing',
