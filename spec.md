@@ -39,7 +39,7 @@ Score altitude, landing chains, and collected tokens. Results show a component b
 
 ### Modes
 
-- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action.
+- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action. The lesson bar is updated in place as steps advance (never rebuilt), so a press on Skip lesson always ends in its click.
 - **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
 - **Daily:** one shared seed and ruleset per UTC day, synchronized to platform time.
 - **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.

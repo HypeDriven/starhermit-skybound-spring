@@ -497,11 +497,15 @@ export class UI {
     let bar = document.getElementById('tut-bar');
     if (!bar) {
       bar = el('div', { class: 'tutorial-bar', id: 'tut-bar', role: 'status' });
+      bar.append(el('span', { class: 'tutorial-step' }), el('p'), button('', () => this.actions.skipTutorial(), 'btn btn-small'));
       this.root.append(bar);
     }
-    bar.innerHTML = '';
-    bar.append(el('span', { class: 'tutorial-step', text: T('Lesson {n}/{total}', { n: stepIdx + 1, total: stepCount }) }),
-      el('p', { text: T(text) }), button(T('Skip lesson'), () => this.actions.skipTutorial(), 'btn btn-small'));
+    // Updated in place: steps advance mid-run, and a Skip button rebuilt between press and
+    // release would lose the click.
+    const [step, line, skip] = bar.children;
+    step.textContent = T('Lesson {n}/{total}', { n: stepIdx + 1, total: stepCount });
+    line.textContent = T(text);
+    skip.textContent = T('Skip lesson');
   }
   hideTutorialOverlay() {
     this._tut = null;
