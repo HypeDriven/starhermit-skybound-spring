@@ -1,75 +1,63 @@
-// Skybound Spring — localization coverage: every English key the code and the
-// content data show to players exists in all nine locales (en-GB → en-US,
-// es-ES → es-419, fr-CA → fr-FR inherit), placeholders survive translation,
-// and the locale follows sh-language.js and switches live.
-import test from 'node:test';
+// Localization coverage: every English key the native client draws (T("…")
+// and N("…") in native/*.ts, and the content's names and texts it passes to
+// T()) is translated in every full locale (en-GB → en-US, es-ES → es-419,
+// fr-CA → fr-FR inherit), no table row is unused, placeholders survive, and
+// the account strings cover the nine locales.
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { ROWS, OVERRIDES } from '../src/strings.js';
+import { platformStrings } from '../src/platform-i18n.js';
+import { THEMES, TUTORIALS, CHALLENGES, ACHIEVEMENTS } from '../src/content.js';
+import { DIFFICULTY } from '../src/rules.js';
 
-import { read, usedKeys } from './i18n-keys.mjs';
+const ROOT = new URL('../', import.meta.url);
+const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
+export const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
+const FULL = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
 
-const { TABLES, LOCALES, T, currentLang } = await import('../src/i18n.js');
-const PARENT = { 'en-GB': 'en-US', 'es-ES': 'es-419', 'fr-CA': 'fr-FR' };
-const has = (l, k) => { for (let x = l; x; x = PARENT[x]) if (TABLES[x] && Object.hasOwn(TABLES[x], k)) return TABLES[x][k]; return undefined; };
-const holes = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+export function tables() {
+  const T = {};
+  for (const row of ROWS) FULL.forEach((l, i) => { (T[l] ??= {})[row[0]] = row[i + 1]; });
+  for (const [l, t] of Object.entries(OVERRIDES)) T[l] = { ...t };
+  return T;
+}
+export function usedKeys() {
+  const keys = new Set();
+  const lit = String.raw`"((?:[^"\\]|\\.)*)"`;
+  for (const f of readdirSync(new URL('native/', ROOT)).filter((n) => n.endsWith('.ts'))) {
+    const src = read(`native/${f}`);
+    for (const m of src.matchAll(new RegExp(String.raw`\b[TN]\(\s*${lit}`, 'g'))) keys.add(m[1].replace(/\\"/g, '"'));
+  }
+  for (const k of [
+    ...THEMES.map((t) => t.name),
+    ...TUTORIALS.flatMap((t) => [t.name, ...t.steps.map((s) => s.text)]),
+    ...CHALLENGES.flatMap((c) => [c.name, c.description]),
+    ...ACHIEVEMENTS.flatMap((a) => [a.name, a.description]),
+    ...Object.values(DIFFICULTY).map((d) => d.label),
+  ]) keys.add(k);
+  return [...keys].filter((k) => /[A-Za-z]/.test(k)).sort();
+}
 
-test('every used key is translated in all nine locales with its placeholders', async () => {
-  const keys = await usedKeys();
-  assert.ok(keys.size > 150, `found ${keys.size} keys`);
-  const missing = [];
-  for (const k of keys) {
-    for (const l of LOCALES) {
-      const v = has(l, k);
-      if (typeof v !== 'string' || !v) missing.push(`${l}: ${k}`);
-      else if (holes(v) !== holes(k)) missing.push(`${l}: placeholders differ in "${k}" → "${v}"`);
+test('every key the client draws is translated in every locale; no unused rows; placeholders intact', () => {
+  const T = tables();
+  const used = usedKeys();
+  assert.ok(used.length > 150, `keys found: ${used.length}`);
+  const problems = [];
+  for (const loc of FULL) for (const k of used) if (!Object.prototype.hasOwnProperty.call(T[loc] || {}, k)) problems.push(`${loc} missing: ${k}`);
+  for (const [loc, table] of Object.entries(T)) {
+    if (!LOCALES.includes(loc)) problems.push(`unknown locale ${loc}`);
+    for (const [k, v] of Object.entries(table)) {
+      if (!used.includes(k)) { problems.push(`${loc} unused: ${k}`); continue; }
+      const want = (k.match(/\{\w+\}/g) || []).sort().join(), got = (String(v).match(/\{\w+\}/g) || []).sort().join();
+      if (want !== got) problems.push(`${loc} placeholders: ${k}`);
     }
   }
-  assert.deepEqual(missing, []);
+  for (const loc of ['en-GB', 'es-ES', 'fr-CA']) if (!T[loc]) problems.push(`no ${loc} table`);
+  assert.deepEqual(problems, []);
 });
 
-test('tables carry no unused rows (catches typos in keys)', async () => {
-  const keys = await usedKeys();
-  const unused = Object.keys(TABLES['en-US']).filter((k) => !keys.has(k));
-  assert.deepEqual(unused, []);
-});
-
-test('T fills placeholders and falls back to English outside the browser', () => {
-  assert.equal(currentLang(), 'en-US');
-  assert.equal(T('Score {n}', { n: 12 }), 'Score 12');
-  assert.equal(T('No such key'), 'No such key');
-});
-
-test('index.html loads sh-language.js before the bundle', () => {
-  const html = read('index.html');
-  const lang = html.indexOf('src="sh-language.js"');
-  assert.ok(lang > 0 && lang < html.indexOf('src="app.js"'));
-});
-
-test('the locale follows sh-language.js (device → choice) and switches live', async () => {
-  const store = new Map();
-  const win = { navigator: { languages: ['de-AT', 'en'] }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) } };
-  const mod = { exports: {} };
-  new Function('module', 'window', read('sh-language.js'))(mod, win);
-  const doc = { documentElement: {}, events: [], dispatchEvent(e) { this.events.push(e.detail.lang); } };
-  globalThis.window = { StarHermitLanguage: mod.exports, location: { search: '' } };
-  globalThis.document = doc;
-  try {
-    const I = await import('../src/i18n.js?live');
-    const seen = [];
-    I.onLanguage((l) => seen.push(l));
-    assert.equal(I.currentLang(), 'de-DE');
-    assert.equal(doc.documentElement.lang, 'de-DE');
-    assert.equal(I.T('Journey'), 'Reise');
-    I.language.setChoice('fr-CA');
-    assert.equal(I.currentLang(), 'fr-CA');
-    assert.deepEqual(seen, ['fr-CA']);
-    assert.deepEqual(doc.events, ['de-DE', 'fr-CA']);
-    assert.equal(I.T('Score {n}', { n: 5 }), 'Pointage 5', 'fr-CA override');
-    assert.equal(I.T('Journey'), 'Voyage', 'fr-CA inherits fr-FR');
-    assert.equal(store.get('skybound-spring.language.guest'), 'fr-CA');
-    I.language.setChoice('auto');
-    assert.equal(I.currentLang(), 'de-DE');
-  } finally {
-    delete globalThis.window;
-    delete globalThis.document;
-  }
+test('the account strings cover all nine locales', () => {
+  const keys = Object.keys(platformStrings('en-US'));
+  for (const l of LOCALES) for (const k of keys) assert.ok(platformStrings(l)[k], `${l} ${k}`);
 });

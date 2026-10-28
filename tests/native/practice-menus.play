@@ -1,0 +1,74 @@
+# Practice on a compact window (no rails: the Objective / Actions drawers):
+# Storm with a typed seed, the Objective drawer, the
+# Actions drawer's Pause, the pause screen's Settings (captions, left-handed)
+# and Help, resume, undo, a mouse drag steering off the pad to a fall; then the title's Profile, Journey,
+# Challenges and Help screens.
+# viewport 800x600@1
+until 300 Skybound Spring
+frames 10
+click Practice
+until 100 Seed (shareable):
+frames 10
+click Storm (hard)
+frames 5
+key Tab 1
+frames 5
+type {End}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}4242
+frames 5
+click Start practice run
+until 300 Go!
+frames 60
+click =Objective
+until 60 Practice (Storm (hard)): climb as high as you can.
+click =Close panel #2
+frames 10
+click =Actions
+until 60 Status
+expect Climbing
+save practice-drawer
+click =Pause (P)
+until 60 Undo to last landing (Z)
+expect Mode: Practice (Storm (hard))
+click Settings
+until 60 Color-vision palette
+click =Captions (text cues for sounds)
+frames 5
+click =Left-handed layout
+frames 5
+save practice-settings
+click Back
+until 60 Undo to last landing (Z)
+click Help
+until 60 How to play
+expect Thorn clusters (red spikes)
+key Escape 2
+until 60 Leave run
+click ▶ Resume
+frames 40
+key KeyZ 2
+frames 20
+save practice-run
+drag 70% 40% 20% 40% 30
+until 600 Run over
+frames 10
+expect milestone reached
+click Continue
+until 100 Journey: 0/40 stages
+click Profile
+until 60 Achievements
+expect Offline — online leaderboards need a StarHermit sign-in.
+click Back
+frames 10
+click Journey
+until 60 Mastery gates: 0/5 cleared
+save journey-grid
+click Back
+frames 10
+click Challenges
+until 60 Sky Sprint
+click Back
+frames 10
+click Help
+until 60 How to play
+key Escape 2
+until 60 Journey: 0/40 stages
