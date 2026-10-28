@@ -3,7 +3,7 @@
 // steps — one decision a 60 Hz step, two rules ticks a step — limited to what
 // held keys can do (a reversal releases one key a step before holding the
 // other), and the steering changes become hold / release lines at exact
-// frames. Timing on the 1.20.1 render check (measured): the `until Go!` line
+// frames. Timing on the 1.22.0 render check (measured): the `until Go!` line
 // matches on the frame the countdown shows "Go!"; the first climbing step is
 // 39 frames later (step k sees rules tick 2k); each key line takes one frame
 // and acts on that frame's step; `frames N` takes N + 1 frames.
