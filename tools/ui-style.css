@@ -1,0 +1,128 @@
+/* Skybound Spring — the browser build's styles.css rewritten class-based for
+   the engine's UI (`npm run css` converts it into assets/ui-style.json).
+   Element selectors, ids, attribute selectors, :has() and @media do not
+   convert: every widget names its classes and the breakpoints are layouts
+   picked in native/screens.ts (rails from 1024 px, drawers below, no rails
+   on portrait phones up to 700 px wide, short landscape up to 500 px tall).
+   High contrast (the old html.high-contrast palette), larger text and
+   reduced motion are the runtime's options; native/style.ts swaps the
+   tokens. */
+
+:root {
+  --ink: #1d2433;
+  --inksoft: #48516a;
+  --panel: #ffffffeb;
+  --panelsolid: #ffffff;
+  --accent: #3f8f6e;
+  --accentstrong: #2c6e54;
+  --danger: #c0492f;
+  --focus: #ffb020;
+  --sky: #7fb7e8;
+  --wash: #141e2d59;
+  --scrim: #00000059;
+  --hover: #eef7f0;
+  --gold: #8a6d00;
+}
+
+* { box-sizing: border-box; }
+
+/* ------------------------------------------------------------- chrome */
+.page-bg { background: var(--sky); border-radius: 0; }
+.card { background: var(--panel); border-radius: 12px; padding: 12px; }
+.card-h2 { color: var(--ink); font-size: 16px; font-weight: 700; }
+.card-h3 { color: var(--ink); font-size: 15.2px; font-weight: 700; }
+.text { color: var(--ink); font-size: 16px; }
+.muted { color: var(--inksoft); font-size: 16px; }
+.small { color: var(--inksoft); font-size: 13.6px; }
+.drawer { background: var(--panelsolid); border-radius: 0; padding: 12px; box-shadow: 0 0 24px #00000066; }
+.scrim { background: var(--scrim); border-radius: 0; }
+
+/* ------------------------------------------------------------- screens */
+.wash { background: var(--wash); border-radius: 0; }
+.panel { background: var(--panel); border-radius: 16px; padding: 20px 24px; box-shadow: 0 12px 40px #00000040; }
+.game-title { color: var(--accentstrong); font-size: 38.4px; font-weight: 700; }
+.h1 { color: var(--ink); font-size: 32px; font-weight: 700; }
+.h2 { color: var(--ink); font-size: 24px; font-weight: 700; }
+.h3 { color: var(--ink); font-size: 18.7px; font-weight: 700; }
+.tagline { color: var(--inksoft); font-size: 16px; }
+.achv { color: var(--gold); font-size: 16px; font-weight: 700; }
+.unlocked { color: var(--accentstrong); font-size: 16px; font-weight: 700; }
+.result-reason { color: var(--ink); font-size: 17.6px; }
+.score-total { color: var(--ink); font-size: 18.4px; font-weight: 700; }
+.score-key { color: var(--ink); font-size: 16px; }
+.score-value { color: var(--ink); font-size: 16px; font-weight: 700; }
+.total-rule { background: var(--inksoft); border-radius: 0; }
+.help-card { background: var(--panelsolid); border-radius: 12px; padding: 12px; }
+.field { color: var(--ink); font-size: 16px; }
+.countdown-num { color: var(--accentstrong); font-size: 64px; font-weight: 800; }
+
+/* ------------------------------------------------------------- buttons */
+.btn {
+  min-height: 44px; min-width: 44px; padding: 8px 18px; border-radius: 12px; border: 2px solid var(--accent);
+  background: var(--panel); color: var(--ink); font-size: 16px; text-align: center;
+}
+.btn:hover { background: var(--hover); }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn:disabled { opacity: 0.5; }
+.btn.active { background: var(--accent); color: #ffffff; }
+.btn-primary {
+  min-height: 44px; min-width: 44px; padding: 8px 18px; border-radius: 12px; border: 2px solid var(--accentstrong);
+  background: var(--accent); color: #ffffff; font-size: 16px; text-align: center;
+}
+.btn-primary:hover { background: var(--accentstrong); }
+.btn-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-huge {
+  min-height: 44px; padding: 16px 40px; border-radius: 12px; border: 2px solid var(--accentstrong);
+  background: var(--accent); color: #ffffff; font-size: 21.6px; text-align: center;
+}
+.btn-huge:hover { background: var(--accentstrong); }
+.btn-huge:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-small {
+  min-height: 36px; min-width: 36px; padding: 4px 12px; border-radius: 12px; border: 2px solid var(--accent);
+  background: var(--panel); color: var(--ink); font-size: 14.4px; text-align: center;
+}
+.btn-small:hover { background: var(--hover); }
+.btn-small:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-danger {
+  min-height: 44px; min-width: 44px; padding: 8px 18px; border-radius: 12px; border: 2px solid var(--danger);
+  background: var(--panel); color: var(--danger); font-size: 16px; text-align: center;
+}
+.btn-danger:hover { background: #fbeeea; }
+.btn-danger:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-cell {
+  min-height: 44px; min-width: 44px; padding: 6px 4px; border-radius: 12px; border: 2px solid var(--accent);
+  background: var(--panel); color: var(--ink); font-size: 16px; font-weight: 700; text-align: center;
+}
+.btn-cell:hover { background: var(--hover); }
+.btn-cell:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-cell:disabled { opacity: 0.5; }
+.btn-cell-mastery {
+  min-height: 44px; min-width: 44px; padding: 6px 4px; border-radius: 12px; border: 2px solid var(--gold);
+  background: var(--panel); color: var(--ink); font-size: 16px; font-weight: 700; text-align: center;
+}
+.btn-cell-mastery:hover { background: var(--hover); }
+.btn-cell-mastery:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-cell-mastery:disabled { opacity: 0.5; }
+.btn-cell-next {
+  min-height: 44px; min-width: 44px; padding: 6px 4px; border-radius: 12px; border: 3px solid var(--focus);
+  background: var(--panel); color: var(--ink); font-size: 16px; font-weight: 700; text-align: center;
+}
+.btn-cell-next:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-cell-next:disabled { opacity: 0.5; }
+.thumb-btn {
+  min-width: 64px; min-height: 56px; padding: 4px 12px; border-radius: 12px; border: 2px solid var(--inksoft);
+  background: var(--panel); color: var(--ink); font-size: 25.6px; text-align: center;
+}
+.thumb-btn:active { background: var(--accent); color: #ffffff; }
+.thumb-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------- run */
+.hud { background: var(--panel); border-radius: 999px; padding: 6px 16px; }
+.hud-item { color: var(--ink); font-size: 16px; font-weight: 600; text-align: center; }
+.tutorial-bar { background: var(--panel); border-radius: 16px; padding: 10px 18px; }
+.tutorial-step { color: var(--accentstrong); font-size: 16px; font-weight: 700; }
+.captions { background: #000000b3; border-radius: 8px; padding: 2px 10px; }
+.captions-text { color: #ffffff; font-size: 13.6px; }
+.toast { background: #121e30f0; border-radius: 10px; padding: 10px 16px; box-shadow: 0 6px 20px #00000059; }
+.toast-text { color: #f3f7fb; font-size: 14px; text-align: center; }
+.thumb-btn-on { background: var(--accent); border-radius: 12px; }
