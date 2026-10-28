@@ -1,17 +1,20 @@
 {
   "name": "skybound-spring",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "description": "Skybound Spring — a vertical garden platformer: auto-bounce upward, steer through the clouds, chain landings, dodge thorns. On the StarHermit engine.",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --minify --format=esm --target=es2022 --outfile=app.js && node -e \"const fs=require('fs');const s=fs.statSync('app.js').size;console.log('app.js',(s/1024).toFixed(1)+' KiB')\"",
-    "start": "node server.js",
-    "test": "node --test tests/*.test.mjs",
-    "test:e2e": "node tests/e2e.mjs"
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node tools/gen-plays.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
-  },
-  "dependencies": {
-    "three": "^0.185.1"
+    "playwright-core": "^1.57.0"
   }
 }
