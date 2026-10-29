@@ -9,13 +9,13 @@
 // thorn and goal, the sprout-hopper with its squash on landing, and the
 // critically damped camera that only climbs, with its shake.
 //
-// From three.js r185: punctual light intensities are ÷ π (the engine's light
-// units); the RoomEnvironment reflections (High, Ultra) are r185's (the
+// From three.js r185: punctual light intensities as the page wrote them
+// (engine.minor 23+); the RoomEnvironment reflections (High, Ultra) are r185's (the
 // renderer's room, moved down 3.5 as r183+ does) at the old
 // environmentIntensity 0.35; the sky ShaderMaterial is WGSL; the post chain
 // (UnrealBloomPass 0.6 / 0.4 / threshold 1.4, the grade shader, FXAA / SMAA /
-// MSAA) is renderer.bloom / grade / antialias; the key light's fitted
-// shadow box is the engine's view-fitted shadow (distance); the pooled burst
+// MSAA) is renderer.bloom / grade / antialias (the grade keeps over-range
+// light as the page's did); the key light's shadow is the page's fitted ortho box; the pooled burst
 // planes are one instanced mesh whose opacity rides an instance slot. The
 // old canvas between the rails is a view offset of the window. Cosmetic
 // randomness never touches the rules.
@@ -23,7 +23,7 @@ import {
   ACESFilmicToneMapping, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, CylinderGeometry,
   DirectionalLight, DoubleSide, DynamicDrawUsage, Euler, ExtrudeGeometry, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4,
   Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OctahedronGeometry, PerspectiveCamera, PlaneGeometry,
-  PMREMGenerator, Points, PointsMaterial, Quaternion, RoomEnvironment, Shape, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace,
+  PMREMGenerator, Points, PointsMaterial, Quaternion, RoomEnvironment, Shape, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, type OrthographicCamera,
   Vector3, Vector4, renderer, scene, type Object3D, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
@@ -64,12 +64,12 @@ const pal = (): Record<string, number> => Content.CVD_PALETTES[palette] ?? Conte
 
 // -- lights and sky -----------------------------------------------------------------------------------
 const keyDir = new Vector3(300, 800, 600).normalize();
-const key = new DirectionalLight(0xffffff, 1.7 / PI);
+const key = new DirectionalLight(0xffffff, 1.7);
 key.shadow.bias = -0.0004;
-key.shadow.normalBias = 1.5;
+key.shadow.normalBias = 1.2; // the page's own value (world units)
 key.shadow.radius = 3;
 scene.add(key, key.target);
-const hemi = new HemisphereLight(0xbfd9ff, 0x8a9a6a, 0.95 / PI);
+const hemi = new HemisphereLight(0xbfd9ff, 0x8a9a6a, 0.95);
 scene.add(hemi);
 
 // SKY_FRAG: vertical gradient, haze band, sun glow, hashed twinkling stars (night themes)
@@ -374,11 +374,12 @@ function applyPost(): void {
   renderer.grade = q.grade ? {
     space: "linear", contrast: 0.18, saturation: 1.1, shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97], split: [0.2, 0.8],
     vignette: { amount: 0.2, inner: 0.4, outer: 0.9, scale: [1, 0.85] },
+    overRange: "keep", // mix(c, s + max(c - 1, 0), amount) as the page's GradeShader
   } : null;
   renderer.antialias = q.antialias;
   scene.environment = q.reflections ? environment() : null;
   scene.environmentIntensity = 0.35;
-  hemi.intensity = (q.reflections ? 0.8 : 0.95) / PI;
+  hemi.intensity = q.reflections ? 0.8 : 0.95;
 }
 
 /** setGraphics: a new look (graphics level); pads, motes and the background are rebuilt when assets change. */
@@ -811,11 +812,26 @@ export function draw(state: State | null, dt: number): void {
   fitShadow();
 }
 
-/** _fitShadow: the sun follows the visible play area, snapped to whole texels; the engine fits the map to the view. */
+/** _fitShadow: the sun's shadow box fitted to the visible play area, snapped to whole texels. */
 function fitShadow(): void {
   if (!key.castShadow) return;
-  key.shadow.distance = camZ + 300;
+  const halfH = camZ * Math.tan(((FRAMING.FOV / 2) * PI) / 180);
+  const ext = Math.max(WORLD_WIDTH / 2 + 40, halfH + 40);
+  const cam = key.shadow.camera as OrthographicCamera;
+  if (cam.right !== ext) {
+    cam.left = -ext; cam.right = ext; cam.top = ext; cam.bottom = -ext; cam.near = 200; cam.far = 2600;
+    cam.updateProjectionMatrix();
+  }
+  const ms = key.shadow.mapSize;
+  const texel = (2 * ext) / (typeof ms === "number" ? ms : ms.x);
+  const z = keyDir;
+  const x = new Vector3(0, 1, 0).cross(z).normalize();
+  const y = new Vector3().crossVectors(z, x);
   const t = new Vector3(WORLD_WIDTH / 2, camY, 0);
+  const a = Math.round(t.dot(x) / texel) * texel;
+  const b = Math.round(t.dot(y) / texel) * texel;
+  const c = t.dot(z);
+  t.copy(x).multiplyScalar(a).addScaledVector(y, b).addScaledVector(z, c);
   key.target.position.copy(t);
   key.position.copy(t).addScaledVector(keyDir, 1200);
 }
