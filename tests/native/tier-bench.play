@@ -1,0 +1,20 @@
+# Graphics-level bench: Practice Sprout on a typed seed with no input (the hopper bounces and sparkles), 600 frames measured.
+until 300 Skybound Spring
+frames 10
+click Practice
+until 100 Seed (shareable):
+frames 10
+click Storm (hard)
+frames 5
+key Tab 1
+frames 5
+type {End}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}4242
+frames 5
+click Sprout (easy)
+frames 5
+click Start practice run
+until 300 Go!
+frames 120
+measure start
+frames 600
+measure stop

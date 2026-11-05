@@ -24,8 +24,8 @@ writes with `starhermit-files.json`; the same package plays natively in the Star
   envelope and the Practice undo stack (a snapshot at each landing).
 - `src/content.js` — five themes, the colour-vision palettes, 40 Journey stages (a mastery gate every
   8th), two Challenges, four lessons, the Daily from the UTC date, five achievements.
-- `src/progress.js` — the save model (below). `src/strings.js` — the string tables; `src/platform-i18n.js`
-  — the account strings.
+- `src/progress.js` — the save model (below). `assets/strings.json` — the string tables (`strings.load`);
+  the account strings are the engine's (`starhermit.*`).
 - `native/main.ts` — the state machine and input; `native/screens.ts` — the UI (`starhermit:ui`);
   `native/render.ts` — the garden (`starhermit:scene`); `native/audio.ts`; `native/platform.ts`;
   `native/quality.ts`; `native/style.ts` (styles from `tools/ui-style.css` → `assets/ui-style.json`);
@@ -100,11 +100,12 @@ text size.
 
 three.js r185 scene ported to `starhermit:scene`: punctual light intensities ÷ π, ACES at exposure 1.05,
 `RoomEnvironment(renderer)` lowered 3.5 at environmentIntensity 0.35 (High, Ultra). The sky dome is WGSL
-(gradient, haze, sun glow, stars for night themes); linear fog fades only the distant garden. Tiers follow
-the old presets: Low (Lambert, no shadows, MSAA, static background, plain pads), Balanced (standard PBR,
-512 shadows, bloom 0.6/0.4/threshold 1.4, the linear grade with vignette, FXAA, animated background, vein
-and petal textures, pollen), High (clear-coat, 1024 shadows, SMAA, reflections), Ultra (2048 shadows, MSAA,
-more clouds/pollen/sparkles). Pollen and sparkle counts scale within a tier by the level (≤ 2×). Reduced
+(gradient, haze, sun glow, stars for night themes); linear fog fades only the distant garden. Engine-owned effects follow the level
+(`levelSettings()`): shadow map size, bloom resolution, grade, anti-aliasing (Low has none). The art follows
+the tier: Low (Lambert, static background, plain pads), Balanced (standard PBR, bloom 0.6/0.4/threshold 1.4,
+the linear grade with vignette, animated background, vein and petal textures, pollen), High (clear-coat,
+reflections), Ultra (more clouds/pollen/sparkles). Pollen and sparkle counts scale within a tier by the
+level's particle budget (≤ 2×); both are native particle emitters. Reduced
 motion stops shake, sway, drift and sparkles.
 
 ## Sound

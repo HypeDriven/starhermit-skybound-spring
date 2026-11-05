@@ -22,7 +22,7 @@
 // counts the same steps (39 a number, its 650 ms). The replay runs four ticks
 // a step, as the old one ran four a frame.
 import "./i18n.ts";
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { afterRender, clipboard, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { isDown, onAction, onPointerButton, onPointerMove, onTouch, primaryPointer, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -382,8 +382,8 @@ function finishRun(): void {
 export function leaderboardLine(): string | null {
   const r = app.lb;
   if (!r) return null;
-  if (r === "posting") return S("lbPosting");
-  return !r.posted ? S("lbNotPosted") : r.rank ? S("lbRank", { rank: r.rank }) : S("lbPosted");
+  if (r === "posting") return S("leaderboardPosting");
+  return !r.posted ? S("leaderboardNotPosted") : r.rank ? S("leaderboardRank", { rank: r.rank }) : S("leaderboardPosted");
 }
 
 // ------------------------------------------------------------------ account
@@ -392,7 +392,7 @@ export function copyInvite(): void {
   const link = platform.inviteLink();
   if (!link) return;
   try { clipboard.writeText(link); toast(() => S("inviteCopied")); }
-  catch { toast(() => S("inviteLink", { url: link })); }
+  catch { toast(() => S("inviteLink", { link })); }
 }
 export function signIn(): void { click(); void requestSignIn().catch(() => undefined); }
 
@@ -463,18 +463,16 @@ function steering(): number {
   return dir;
 }
 
-const pendingActs: (() => void)[] = [];
-/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pendingActs.push(fn); }
+/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets); before this frame's draw. */
+export function later(fn: () => void): void { afterRender(fn); }
 
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
-  const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  const level = frame().level;
+  if (level === lookKey) return;
+  lookKey = level;
+  render.applyLook(lookFor(levelSettings(level)));
 }
 const CAPTIONS: Record<string, string> = {
   bounce: N("bounce"), spring: N("spring boost!"), crumble: N("petal breaks"), token: N("glow mote collected"), combo: N("chain bonus"),
@@ -486,6 +484,7 @@ audio.onCaption((ev) => {
 });
 
 onStart(() => {
+  audio.loadSfx();
   setFixedRate(60);
   initStyles();
   platform.initPlatform();
@@ -560,10 +559,12 @@ onUpdate((dt) => {
 onRender(() => {
   uiRects.length = 0;
   drawScreens();
-  for (const fn of pendingActs.splice(0)) fn();
-  if (announcements.length) {
-    const text = announcements.splice(0).join(" ").slice(0, 500);
-    try { ui.announce(text); } catch { /* the runtime keeps the newest */ }
-  }
-  render.draw(app.sess && app.machine !== "title" ? app.sess.state : null, frameDt);
+  // queued after this frame's presses (later), so they act on this frame's scene
+  afterRender(() => {
+    if (announcements.length) {
+      const text = announcements.splice(0).join(" ").slice(0, 500);
+      try { ui.announce(text); } catch { /* the runtime keeps the newest */ }
+    }
+    render.draw(app.sess && app.machine !== "title" ? app.sess.state : null, frameDt);
+  });
 });

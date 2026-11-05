@@ -2,12 +2,10 @@
 // and N("…") in native/*.ts, and the content's names and texts it passes to
 // T()) is translated in every full locale (en-GB → en-US, es-ES → es-419,
 // fr-CA → fr-FR inherit), no table row is unused, placeholders survive, and
-// the account strings cover the nine locales.
+// account strings are the engine's (S("…") → starhermit.*).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { ROWS, OVERRIDES } from '../src/strings.js';
-import { platformStrings } from '../src/platform-i18n.js';
 import { THEMES, TUTORIALS, CHALLENGES, ACHIEVEMENTS } from '../src/content.js';
 import { DIFFICULTY } from '../src/rules.js';
 
@@ -16,12 +14,7 @@ const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
 export const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
 const FULL = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
 
-export function tables() {
-  const T = {};
-  for (const row of ROWS) FULL.forEach((l, i) => { (T[l] ??= {})[row[0]] = row[i + 1]; });
-  for (const [l, t] of Object.entries(OVERRIDES)) T[l] = { ...t };
-  return T;
-}
+export const tables = () => JSON.parse(read('assets/strings.json'));
 export function usedKeys() {
   const keys = new Set();
   const lit = String.raw`"((?:[^"\\]|\\.)*)"`;
@@ -55,9 +48,4 @@ test('every key the client draws is translated in every locale; no unused rows; 
   }
   for (const loc of ['en-GB', 'es-ES', 'fr-CA']) if (!T[loc]) problems.push(`no ${loc} table`);
   assert.deepEqual(problems, []);
-});
-
-test('the account strings cover all nine locales', () => {
-  const keys = Object.keys(platformStrings('en-US'));
-  for (const l of LOCALES) for (const k of keys) assert.ok(platformStrings(l)[k], `${l} ${k}`);
 });

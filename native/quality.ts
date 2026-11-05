@@ -1,14 +1,14 @@
-// The look per graphics level: the browser build's four presets and budgets
-// (src/gfx.js TABLE / BUDGETS, each tuned to hold 60 FPS on the weakest GPU
-// its Auto gave it) keyed by the runtime's quality tier (frame().quality),
-// with the pollen and the sparkle bursts scaled within the tier by the level
-// (frame().levelIndex, at most 2×), as the browser build scaled them by its
-// hardware level. Pads, motes, thorns, hit areas and timing are identical on
-// every tier — only visuals change. The runtime owns the rest of the old
-// Graphics panel: Auto and the level choice, render scale and the pixel-ratio
-// cap, adaptive resolution, the frame-rate limit and the FPS readout. The
-// panel's per-category overrides are not offered (Options choose a level).
-import type { QualityTier } from "starhermit:engine";
+// The look per graphics level: the engine's level settings (levelSettings():
+// shadows and their map size, bloom resolution, grade, anti-aliasing) plus the
+// browser build's art budgets keyed by the runtime's quality tier
+// (frame().quality), with the pollen and the sparkle bursts scaled within the
+// tier by the level's particle budget (at most 2×). Pads, motes, thorns, hit
+// areas and timing are identical on every tier — only visuals change. The
+// runtime owns the rest of the old Graphics panel: Auto and the level choice,
+// render scale and the pixel-ratio cap, adaptive resolution, the frame-rate
+// limit and the FPS readout. The panel's per-category overrides are not
+// offered (Options choose a level).
+import { levelSettings, type GraphicsLevel, type LevelSettings, type QualityTier } from "starhermit:engine";
 import type { AntialiasMode } from "starhermit:scene";
 
 export interface Budget {
@@ -24,13 +24,13 @@ export interface Budget {
   pollen: number;
   /** Sparkles per burst (Particles high; low: half). */
   burst: number;
-  bloomRes: number;
 }
 export interface Look {
   preset: QualityTier;
-  /** Key-light shadow map (0 = off). */
-  shadows: 0 | 512 | 1024 | 2048;
-  bloom: boolean;
+  /** Key-light shadow map: the level's size (0 = off). */
+  shadows: number;
+  /** The level's bloom resolution (null = off). */
+  bloom: number | null;
   grade: boolean;
   antialias: AntialiasMode;
   /** The room reflections (scene.environment). */
@@ -43,30 +43,34 @@ export interface Look {
   budget: Budget;
 }
 
-const TABLE: Record<QualityTier, Omit<Look, "preset" | "budget">> = {
-  low: { shadows: 0, bloom: false, grade: false, antialias: "msaa", reflections: false, particles: "low", animated: false, detailed: false },
-  balanced: { shadows: 512, bloom: true, grade: true, antialias: "fxaa", reflections: false, particles: "high", animated: true, detailed: true },
-  high: { shadows: 1024, bloom: true, grade: true, antialias: "smaa", reflections: true, particles: "high", animated: true, detailed: true },
-  ultra: { shadows: 2048, bloom: true, grade: true, antialias: "msaa", reflections: true, particles: "high", animated: true, detailed: true },
+type Art = Pick<Look, "reflections" | "particles" | "animated" | "detailed">;
+const ART: Record<QualityTier, Art> = {
+  low: { reflections: false, particles: "low", animated: false, detailed: false },
+  balanced: { reflections: false, particles: "high", animated: true, detailed: true },
+  high: { reflections: true, particles: "high", animated: true, detailed: true },
+  ultra: { reflections: true, particles: "high", animated: true, detailed: true },
 };
 const BUDGETS: Record<QualityTier, Budget> = {
-  low: { material: "lambert", segments: 0.5, texture: 128, clouds: 24, pollen: 30, burst: 16, bloomRes: 0.5 },
-  balanced: { material: "standard", segments: 0.75, texture: 256, clouds: 32, pollen: 50, burst: 28, bloomRes: 0.5 },
-  high: { material: "physical", segments: 1, texture: 256, clouds: 40, pollen: 70, burst: 40, bloomRes: 0.5 },
-  ultra: { material: "physical", segments: 1.5, texture: 512, clouds: 56, pollen: 120, burst: 56, bloomRes: 1 },
+  low: { material: "lambert", segments: 0.5, texture: 128, clouds: 24, pollen: 30, burst: 16 },
+  balanced: { material: "standard", segments: 0.75, texture: 256, clouds: 32, pollen: 50, burst: 28 },
+  high: { material: "physical", segments: 1, texture: 256, clouds: 40, pollen: 70, burst: 40 },
+  ultra: { material: "physical", segments: 1.5, texture: 512, clouds: 56, pollen: 120, burst: 56 },
 };
 export const POLLEN_MAX = 240;
 export const BURST_MAX = 80;
-/** The first level index of each tier. */
-const TIER_FLOOR: Record<QualityTier, number> = { low: 0, balanced: 2, high: 4, ultra: 7 };
+const ANCHOR: Record<QualityTier, GraphicsLevel> = { low: "quantum", balanced: "molecular", high: "terrestrial", ultra: "galactic" };
 
-/** The look for a quality tier at a level index (0 … 9). */
-export function lookFor(preset: QualityTier, levelIndex: number): Look {
-  const b = { ...BUDGETS[preset] };
-  // Levels are about 1.64× apart in GPU throughput: the counts grow with the
-  // level above the tier's first, at most 2× (gfx.js budgetFor).
-  const k = Math.min(2, Math.pow(1.64, Math.max(0, levelIndex - TIER_FLOOR[preset])));
-  b.pollen = Math.min(POLLEN_MAX, Math.round(b.pollen * k));
-  b.burst = Math.min(BURST_MAX, Math.round(b.burst * k));
-  return { preset, ...TABLE[preset], budget: b };
+/** The look for a graphics level's settings. */
+export function lookFor(s: LevelSettings = levelSettings()): Look {
+  const preset = s.quality;
+  const b = BUDGETS[preset];
+  const k = Math.min(2, s.particles / levelSettings(ANCHOR[preset]).particles);
+  return {
+    preset, ...ART[preset],
+    shadows: s.shadows ? s.shadowMapSize : 0,
+    bloom: s.bloom ? s.bloom.resolution : null,
+    grade: s.grade,
+    antialias: s.antialias,
+    budget: { ...b, texture: Math.min(b.texture, s.maxTextureSize), pollen: Math.min(POLLEN_MAX, Math.round(b.pollen * k)), burst: Math.min(BURST_MAX, Math.round(b.burst * k)) },
+  };
 }

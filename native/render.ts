@@ -15,20 +15,20 @@
 // environmentIntensity 0.35; the sky ShaderMaterial is WGSL; the post chain
 // (UnrealBloomPass 0.6 / 0.4 / threshold 1.4, the grade shader, FXAA / SMAA /
 // MSAA) is renderer.bloom / grade / antialias (the grade keeps over-range
-// light as the page's did); the key light's shadow is the page's fitted ortho box; the pooled burst
-// planes are one instanced mesh whose opacity rides an instance slot. The
+// light as the page's did); the key light's shadow is the page's fitted ortho box; the burst
+// planes and the pollen are native particle emitters. The
 // old canvas between the rails is a view offset of the window. Cosmetic
 // randomness never touches the rules.
 import {
   ACESFilmicToneMapping, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, CylinderGeometry,
   DirectionalLight, DoubleSide, DynamicDrawUsage, Euler, ExtrudeGeometry, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4,
   Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OctahedronGeometry, PerspectiveCamera, PlaneGeometry,
-  PMREMGenerator, Points, PointsMaterial, Quaternion, RoomEnvironment, Shape, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, type OrthographicCamera,
-  Vector3, Vector4, renderer, scene, type Object3D, type Texture,
+  PMREMGenerator, ParticleEmitter, PointsMaterial, Quaternion, RoomEnvironment, Shape, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, type OrthographicCamera,
+  Vector3, renderer, scene, type Object3D, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 import { Content, Rules, type Palette, type Platform, type SimEvent, type State, type Theme } from "./game.ts";
-import type { Look } from "./quality.ts";
+import { BURST_MAX, POLLEN_MAX, type Look } from "./quality.ts";
 
 const PI = Math.PI;
 const { WORLD_WIDTH, PLAYER_RADIUS } = Rules;
@@ -367,9 +367,9 @@ function applyPost(): void {
   const q = look!;
   renderer.shadowMap.enabled = q.shadows > 0;
   key.castShadow = q.shadows > 0;
-  if (q.shadows > 0) key.shadow.mapSize = q.shadows;
+  if (q.shadows > 0) key.shadow.mapSize = q.shadows; // the level's size: the engine keeps whatever the game sets
   // high threshold: only emissive motes, sparkles and the sun core bloom
-  renderer.bloom = q.bloom ? { strength: 0.6, radius: 0.4, threshold: 1.4, resolution: q.budget.bloomRes } : null;
+  renderer.bloom = q.bloom !== null ? { strength: 0.6, radius: 0.4, threshold: 1.4, resolution: q.bloom } : null;
   // GradeShader before the OutputPass: a 0.18 S-curve, 1.1 saturation, cool shadows / warm highlights, the 0.2 vignette
   renderer.grade = q.grade ? {
     space: "linear", contrast: 0.18, saturation: 1.1, shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97], split: [0.2, 0.8],
@@ -391,6 +391,7 @@ export function applyLook(next: Look): void {
   pollenMat.map = dotTex;
   sparkMat.map = dotTex;
   applyPost();
+  sparkGlow();
   const budgetChanged = !prev || prev.preset !== next.preset;
   if (budgetChanged) applyBudgetAssets();
   if (budgetChanged || prev!.detailed !== next.detailed) {
@@ -400,7 +401,11 @@ export function applyLook(next: Look): void {
   }
   buildEnvironment();
 }
-export function setReducedMotion(on: boolean): void { reducedMotion = on; }
+export function setReducedMotion(on: boolean): void {
+  if (reducedMotion === on) return;
+  reducedMotion = on;
+  setPollen(pollenCount);
+}
 export function setPalette(p: Palette): void {
   if (p === palette) return;
   palette = p;
@@ -434,11 +439,10 @@ export function setTheme(keyName: string): void {
 
 // -- the background (clouds, stalks, leaves, pollen) -------------------------------------------------------
 interface CloudData { x: number; y: number; z: number; s: number; speed: number; phase: number; puffs: number[][] }
-let clouds: InstancedMesh | null = null, stalks: InstancedMesh | null = null, leaves: InstancedMesh | null = null, pollen: Points | null = null;
+let clouds: InstancedMesh | null = null, stalks: InstancedMesh | null = null, leaves: InstancedMesh | null = null;
 let cloudData: CloudData[] = [];
 let stalkData: { x: number; z: number; r: number; phase: number }[] = [];
 let leafData: { st: { x: number; z: number; r: number }; y: number; side: number; s: number; tilt: number }[] = [];
-let pollenSeed: { x: number; y: number; z: number; ph: number; sp: number }[] = [];
 let envY: number | null = null;
 function mulberry(seed: number): () => number {
   let s = seed >>> 0;
@@ -490,20 +494,25 @@ function buildEnvironment(): void {
     leaves.frustumCulled = false;
     scene.add(leaves);
   }
-  removeEnv(pollen);
-  pollen = null;
-  const pollenCount = q.particles === "high" && D.pollen ? b.pollen : 0;
-  if (pollenCount) {
-    pollenSeed = [];
-    for (let i = 0; i < pollenCount; i++) pollenSeed.push({ x: rng() * (WORLD_WIDTH + 200) - 100, y: rng() * 1400, z: -350 + rng() * 300, ph: rng() * 6.28, sp: 8 + rng() * 14 });
-    const geo = new BufferGeometry();
-    geo.setAttribute("position", new BufferAttribute(new Float32Array(pollenCount * 3), 3));
-    pollen = new Points(geo, pollenMat);
-    pollen.frustumCulled = false;
-    scene.add(pollen);
-  }
+  setPollen(q.particles === "high" && D.pollen ? b.pollen : 0);
   envY = null;
   updateEnvironment(true);
+}
+/** Floating pollen, rising and drifting; still when the background isn't animated. */
+const pollen = new ParticleEmitter({ capacity: POLLEN_MAX, material: pollenMat, seed: 0xc10d6, space: "local", shape: "box", extent: [(WORLD_WIDTH + 200) / 2, 700, 150] });
+pollen.position.set(WORLD_WIDTH / 2, 0, -200);
+pollen.frustumCulled = false;
+scene.add(pollen);
+let pollenCount = 0;
+function setPollen(count: number): void {
+  pollenCount = count;
+  pollen.visible = count > 0;
+  pollen.clear();
+  if (!count) { pollen.rate = 0; return; }
+  pollen.set(animated()
+    ? { velocity: [0, 15, 0], velocitySpread: [11, 7, 0], life: [2, 26], rate: count / 14 }
+    : { velocity: [0, 0, 0], velocitySpread: 0, life: 3600, rate: 0 });
+  pollen.burst(count);
 }
 const m4 = new Matrix4(), q4 = new Quaternion(), e3 = new Euler(), v3 = new Vector3(), s3 = new Vector3();
 /** Parallax (camera-driven, always) plus drift and sway (animated background only). */
@@ -546,15 +555,7 @@ function updateEnvironment(force: boolean): void {
     }
     leaves.instanceMatrix.needsUpdate = true;
   }
-  if (pollen) {
-    const pos = pollen.geometry.attributes.position!;
-    for (let i = 0; i < pollenSeed.length; i++) {
-      const p = pollenSeed[i]!;
-      const rise = anim ? t * p.sp : 0;
-      pos.setXYZ(i, p.x + (anim ? Math.sin(t * 0.6 + p.ph) * 18 : 0), camY + wrap(p.y + rise - camY * 0.1, 1400), p.z);
-    }
-    pos.needsUpdate = true;
-  }
+  pollen.position.y = camY * 0.9; // the band follows the camera with the old parallax
 }
 
 // -- pads and motes ----------------------------------------------------------------------------------------
@@ -659,64 +660,35 @@ function syncViews(state: State): void {
   for (const [id, v] of tokenViews) if (!seenT.has(id)) { scene.remove(v); tokenViews.delete(id); }
 }
 
-// -- sparkle bursts: the old pooled planes as one instanced mesh (opacity in instance slot 0) -------------------
-const SPARK_MAX = 240;
-const SPARK_VERT = /* wgsl */ `
-fn vertex(v: Vertex) -> Vertex {
-  var o = v;
-  o.v0 = v.instance;
-  return o;
-}`;
-const SPARK_SURF = /* wgsl */ `
-fn surface(s: Surface) -> Surface {
-  var o = s;
-  o.base_color = vec4f(s.base_color.rgb, s.base_color.a * s.v0.x);
-  return o;
-}`;
+// -- sparkle bursts: one emitter per colour and size step (a colour applies to live particles too; instance size is per emitter) ---
+const sparkGeo = new PlaneGeometry(7, 7);
 const sparkMat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, side: DoubleSide });
-sparkMat.hooks = { vertex: SPARK_VERT, surface: SPARK_SURF };
-const sparks = new InstancedMesh(new PlaneGeometry(7, 7), sparkMat, SPARK_MAX);
-sparks.customSlots = 1;
-sparks.instanceMatrix.setUsage(DynamicDrawUsage);
-sparks.frustumCulled = false;
-sparks.noAO = true;
-sparks.count = 0;
-scene.add(sparks);
-interface Spark { x: number; y: number; vx: number; vy: number; life: number; s: number; color: Color }
-const live: Spark[] = [];
-const cosmetic = mulberry(0x5a4e1);
+const SPARK_SIZES = [0.95, 1.45]; // the old 0.8 to 1.6 per spark, in two steps
+const SPARK_COLORS = [0xdfffc8, 0xffe066, 0xffc0dd, 0xfff09a, 0xff6a6a, 0xa0ffd8];
+const sparkEmitters = new Map<number, ParticleEmitter[]>();
+SPARK_COLORS.forEach((color, c) => sparkEmitters.set(color, SPARK_SIZES.map((size, i) => {
+  const e = new ParticleEmitter({
+    capacity: BURST_MAX, geometry: sparkGeo, material: sparkMat, seed: 0x5a4e1 + c * 2 + i, gravity: [0, -300, 0], life: [0.5, 0.8], size,
+    color, opacity: [0.95, 0.87, 0.43, 0], // the old min(0.95, life left × 2)
+  });
+  e.frustumCulled = false;
+  e.noAO = true;
+  scene.add(e);
+  return e;
+})));
+function sparkGlow(): void {
+  const glow = look && look.bloom !== null ? 2.6 : 1;
+  for (const [color, list] of sparkEmitters) for (const e of list) e.set({ color: new Color(color).multiplyScalar(glow) });
+}
 function burst(x: number, y: number, color: number, count: number, spread = 60): void {
   if (reducedMotion || !look) return;
   const b = look.budget.burst;
   const n = Math.min(count, look.particles === "high" ? b : Math.round(b / 2));
-  const glow = look.bloom ? 2.6 : 1;
-  for (let i = 0; i < n && live.length < SPARK_MAX; i++) {
-    live.push({
-      x, y, vx: (cosmetic() - 0.5) * spread * 2, vy: cosmetic() * spread * 1.6, life: 0.5 + cosmetic() * 0.3, s: 0.8 + cosmetic() * 0.8,
-      color: new Color(color).multiplyScalar(glow),
-    });
+  const [small, large] = sparkEmitters.get(color)!;
+  for (const [e, k] of [[small!, n >> 1], [large!, n - (n >> 1)]] as const) {
+    e.set({ velocity: [0, spread * 0.8, 0], velocitySpread: [spread, spread * 0.8, 0] });
+    e.burst(k, [x, y, 10]);
   }
-}
-const v4 = new Vector4();
-function updateSparks(dt: number): void {
-  for (let i = live.length - 1; i >= 0; i--) {
-    const p = live[i]!;
-    p.life -= dt;
-    if (p.life <= 0) { live.splice(i, 1); continue; }
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vy -= 300 * dt;
-  }
-  live.forEach((p, i) => {
-    m4.makeScale(p.s, p.s, p.s);
-    m4.setPosition(p.x, p.y, 10);
-    sparks.setMatrixAt(i, m4);
-    sparks.setColorAt(i, p.color);
-    sparks.setCustomAt(i, v4.set(Math.min(0.95, p.life * 2), 0, 0, 0));
-  });
-  sparks.count = live.length;
-  sparks.instanceMatrix.needsUpdate = true;
-  if (sparks.instanceColor) sparks.instanceColor.needsUpdate = true;
 }
 function shakeCamera(amount: number): void { if (!reducedMotion) shake = Math.max(shake, amount); }
 
@@ -769,7 +741,7 @@ export function resetRun(): void {
   camVel = 0;
   shake = 0;
   playerSquash = 0;
-  live.length = 0;
+  for (const list of sparkEmitters.values()) for (const e of list) e.clear();
   clearViews();
 }
 
@@ -795,7 +767,6 @@ export function draw(state: State | null, dt: number): void {
     player.visible = false;
   }
   // back on the title the last run's pads and hopper stay where they were, as the old page left them
-  updateSparks(dt);
   shake = Math.max(0, shake - dt * 26);
   const sx = shake > 0 ? (Math.random() - 0.5) * shake : 0;
   const sy = shake > 0 ? (Math.random() - 0.5) * shake : 0;

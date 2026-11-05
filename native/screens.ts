@@ -43,17 +43,16 @@ interface Layout {
 const lastSize = new Map<string, number>();
 const inRun = (): boolean => !!app.sess && app.machine !== "title";
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sc = v.scale;
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const wide = lw >= 1024;
   const phone = lw <= 700 && lh > lw;
   const short = lh <= 500 && lw > lh;
   const rail = 240;
   const trayH = inRun() ? (lastSize.get("tray") ?? (short ? 64 : 72)) : 0;
   const sx = wide ? rail : 0;
-  return { lw, lh, sc, ox: sa.left, oy: sa.top, wide, phone, short, rail, sx, sy: 0, sw: lw - (wide ? 2 * rail : 0), sh: Math.max(1, lh - trayH), trayH };
+  return { lw, lh, sc, ox: v.x, oy: v.y, wide, phone, short, rail, sx, sy: 0, sw: lw - (wide ? 2 * rail : 0), sh: Math.max(1, lh - trayH), trayH };
 }
 const fresh = (): boolean => frame().frame !== app.openedFrame;
 function textWidth(text: string, style: string, kind?: "button" | "heading"): number {
@@ -90,15 +89,7 @@ function heading(cls: string, text: string, width: number): void {
 }
 /** .row.gap with flex-wrap: buttons packed into rows `width` wide. */
 function flow(key: string, width: number, list: Btn[], spacing = 12): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  for (const b of list) {
-    const w = textWidth(b.text, b.style ?? "btn", "button");
-    if (rows[rows.length - 1]!.length && used + spacing + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? spacing : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(key, () => rows.forEach((r, i) => ui.row(`${key}-${i}`, () => { for (const b of r) button(b, textWidth(b.text, b.style ?? "btn", "button") > width ? width : null); }, { spacing })), { spacing: 10 });
+  ui.row(key, () => { for (const b of list) button(b, textWidth(b.text, b.style ?? "btn", "button") > width ? width : null); }, { wrap: true, width, gap: { row: 10, column: spacing } });
 }
 /** A check box whose label wraps (the built-in one's does not): the whole row toggles. */
 function check(id: string, text: string, checked: boolean, width: number, onChange: (v: boolean) => void): void {
