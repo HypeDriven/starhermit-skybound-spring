@@ -7,8 +7,8 @@ board.
 
 ## Implementation
 
-A StarHermit engine **script game** (TypeScript on the host API), pinned to engine **1.36.0** with
-`engine.minor=32` (three.js r185 parity). `starhermit.txt` names the entry `native/main.ts`, the
+A StarHermit engine **script game** (TypeScript on the host API), pinned to engine **1.37.0** with
+`engine.minor=37` (three.js r185 parity). `starhermit.txt` names the entry `native/main.ts`, the
 capabilities `platform, storage, clipboard`, the actions and their gamepad defaults, and
 `server=score-script.js`. Browsers open `index.html`, the engine's web loader that `npm run package`
 writes with `starhermit-files.json`; the same package plays natively in the StarHermit client.
