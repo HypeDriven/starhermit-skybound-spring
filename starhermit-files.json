@@ -4,7 +4,7 @@
     "assets/ui-style.json": {"sha256": "66fdbfb72e6ebeac82fd88926fb10a17665d3d36dfb1ca9b0da83c32a6258eda", "size": 10775},
     "cover.jpg": {"sha256": "44cf827960a21911bb7840933354e3f3ee4c0c2479778b807cb14ccab12ffa9a", "size": 187929},
     "icon.png": {"sha256": "0b844f93de8b009a7454b9f3508804bb3cfbd1e2f6e26c40d1f1da41a686d9c6", "size": 7812},
-    "index.html": {"sha256": "f487847ff37af4d1ede006d4cc8175edb475e772efc5a1a3fb0029eabd71cb14", "size": 1944},
+    "index.html": {"sha256": "c1d3df59b089ab49afd4e6ce3125a61a82103fa0316a7be0e3881b41473df51d", "size": 1944},
     "native/audio.ts": {"sha256": "6156e226ef4d0dbd948d1dd5420c0e21a21e835fa5715f5225f2ba7562595f7f", "size": 7919},
     "native/game.ts": {"sha256": "bce2737b5d06e4defa4cf508f4bb7b7a5741cc69ca76087ba60c818fce5f9823", "size": 6452},
     "native/i18n.ts": {"sha256": "4630d131f0202e1072abaa5dc08d9ccd0e418e23028eddb436c085e5f1574cb4", "size": 1345},
@@ -31,7 +31,7 @@
     "src/progress.js": {"sha256": "0fdc521b7d703896afa6f492f9b2c7d8c5e412e8b15016dd00b753c41313ba43", "size": 6181},
     "src/rules.js": {"sha256": "a867e72dd528b5efd43dca872bcac1261f1f5fb22bee1371eb28c9de45fb60b2", "size": 23295},
     "src/session.js": {"sha256": "082190b200d215ce962bdcc8c5dc228e6fb6167f3ec4da358cdff332230af05c", "size": 9438},
-    "starhermit.txt": {"sha256": "cefc506a895bcce891aea75dc198fabc1b0a55678fdf975dd26aa18155f70681", "size": 1360}
+    "starhermit.txt": {"sha256": "3db032960d522a7a03a61a0cb57cff81928fef38ec3ace73e7ba50cb924c8cee", "size": 1360}
   },
   "excluded": ["LICENSE.md", "coverart.png", "data/", "node_modules/", "package.json", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
