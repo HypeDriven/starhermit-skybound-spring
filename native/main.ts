@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Skybound Spring on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (src/rules.js), the run session
@@ -556,7 +557,7 @@ onUpdate((dt) => {
   if (app.caption && t > app.caption.until) app.caption = null;
   if (app.machine === "title") audio.setIntensity(0);
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   uiRects.length = 0;
   drawScreens();
   // queued after this frame's presses (later), so they act on this frame's scene
@@ -567,4 +568,8 @@ onRender(() => {
     }
     render.draw(app.sess && app.machine !== "title" ? app.sess.state : null, frameDt);
   });
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);
