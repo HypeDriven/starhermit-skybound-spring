@@ -138,13 +138,8 @@ function journeyScript() {
 /** Today's Daily (the date's seed) by keys at 1024 × 640 (the rails' narrowest), to its end. */
 export function dailyScript(date) {
   const d = dailyConfig(date);
-  // an endless chase: the bot climbs 45 s, then steers away from the pads below until it falls
-  const away = (s, k) => {
-    if (k < 60 * 45) return null;
-    let below = null;
-    for (const q of s.platforms) if (q.alive && q.y <= s.player.y && (!below || q.y > below.y)) below = q;
-    return below && s.player.x < below.x ? -1 : 1;
-  };
+  // an endless chase: the bot climbs 45 s, then steers right off the pads until it falls
+  const away = (s, k) => k < 60 * 45 ? null : 1;
   const p = plan({ seed: d.seed, difficulty: d.difficulty, goal: { type: 'none', target: 0 }, mechanics: d.mechanics }, { maxSteps: 60 * 90, force: away });
   if (!p.terminal) throw new Error('the daily run did not end');
   const dirs = p.dirs;
